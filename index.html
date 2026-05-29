@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,23 +8,20 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Sidebar Toggle / Close Button -->
-    <button id="sidebarToggle" class="sidebar-toggle" title="Saved Workflows">
+    <!-- Sidebar Toggle -->
+    <button id="sidebarToggle" class="sidebar-toggle" title="Saved Workflows" aria-label="Toggle saved workflows">
         <span class="toggle-icon-open">☰</span>
         <span class="toggle-icon-close">✕</span>
     </button>
 
-    <!-- Sidebar Overlay (click to close) -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
-    <!-- Sidebar Panel -->
-    <aside id="sidebar" class="sidebar">
-        <div class="sidebar-header">
-            <h2>💾 Saved Workflows</h2>
-        </div>
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar" aria-label="Saved workflows">
+        <div class="sidebar-header"><h2>💾 Saved Workflows</h2></div>
         <div class="sidebar-body">
             <div class="save-section">
-                <input type="text" id="workflowName" placeholder="Workflow name..." class="sidebar-input">
+                <input type="text" id="workflowName" placeholder="Workflow name…" class="sidebar-input" aria-label="Workflow name">
                 <button id="btnSaveWorkflow" class="btn btn-save">💾 Save</button>
             </div>
             <div class="workflow-list" id="workflowList"></div>
@@ -36,21 +33,18 @@
         </div>
     </aside>
 
-    <!-- Main Layout -->
     <div class="main-layout">
-        <!-- Left Column: Builder -->
+        <!-- Builder -->
         <div class="builder-column">
-            <!-- Header -->
             <div class="header">
                 <h1><span class="icon">⚡</span>Prompt Generator</h1>
-                <p class="subtitle">Build structured prompts for AI agents — no AI required</p>
+                <p class="subtitle">Visually compose pseudo-code prompts for AI agents</p>
+                <button id="themeToggle" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">🌙</button>
             </div>
 
-            <!-- Role Section -->
+            <!-- Role -->
             <div class="card" id="roleCard">
-                <div class="card-header">
-                    <span class="section-icon icon-role">🎭</span> AI / Agent Role
-                </div>
+                <div class="card-header"><span class="section-icon icon-role">🎭</span> AI / Agent Role</div>
                 <div class="role-row">
                     <div class="role-select-wrap">
                         <label for="roleSelect">Select Role</label>
@@ -71,50 +65,33 @@
                             <option value="UX Designer (wireframes, prototypes, usability testing)">UX Designer</option>
                             <option value="API Designer (RESTful, GraphQL, versioning, DX)">API Designer</option>
                             <option value="Site Reliability Engineer (uptime, SLOs, monitoring, alerting)">Site Reliability Engineer</option>
-                            <option value="custom">✨ Custom Role...</option>
+                            <option value="custom">✨ Custom Role…</option>
                         </select>
                     </div>
                     <div class="custom-role-wrap" id="customRoleWrap">
                         <label for="customRoleInput">Custom Role</label>
-                        <input type="text" id="customRoleInput" class="custom-role-input" placeholder="e.g., Senior React Developer specializing in accessibility...">
+                        <input type="text" id="customRoleInput" class="custom-role-input" placeholder="e.g., Senior React Developer specializing in accessibility…">
                     </div>
                 </div>
                 <div class="role-checkboxes">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chkAgentic"> Agentic (autonomous tasks)
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chkSubagent"> Subagent (spawn sub-agents)
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chkVerbose"> Verbose (explain reasoning)
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chkStrict"> Strict (follow instructions exactly)
-                    </label>
+                    <label class="checkbox-label"><input type="checkbox" id="chkAgentic"> Agentic (autonomous tasks)</label>
+                    <label class="checkbox-label"><input type="checkbox" id="chkSubagent"> Subagent (spawn sub-agents)</label>
+                    <label class="checkbox-label"><input type="checkbox" id="chkVerbose"> Verbose (explain reasoning)</label>
+                    <label class="checkbox-label"><input type="checkbox" id="chkStrict"> Strict (follow exactly)</label>
                 </div>
             </div>
 
-            <!-- Context Section -->
+            <!-- Context -->
             <div class="card" id="contextCard">
-                <div class="card-header">
-                    <span class="section-icon icon-context">🌐</span> Context & Constraints
-                </div>
+                <div class="card-header"><span class="section-icon icon-context">🌐</span> Context &amp; Constraints</div>
                 <div class="context-fields">
-                    <div class="context-field">
-                        <label for="contextProject">Project / Domain</label>
-                        <input type="text" id="contextProject" placeholder="e.g., E-commerce platform, Mobile app, Microservices...">
-                    </div>
-                    <div class="context-field">
-                        <label for="contextTech">Tech Stack</label>
-                        <input type="text" id="contextTech" placeholder="e.g., React, Node.js, PostgreSQL, Docker...">
-                    </div>
-                    <div class="context-field">
-                        <label for="contextConstraints">Constraints & Rules</label>
-                        <textarea id="contextConstraints" placeholder="e.g., Must be backward compatible, No external dependencies, Max 200 lines per file..." rows="2"></textarea>
-                    </div>
-                    <div class="context-field">
-                        <label for="contextOutput">Output Format</label>
+                    <div class="context-field"><label for="contextProject">Project / Domain</label>
+                        <input type="text" id="contextProject" placeholder="e.g., E-commerce platform, Mobile app…"></div>
+                    <div class="context-field"><label for="contextTech">Tech Stack</label>
+                        <input type="text" id="contextTech" placeholder="e.g., React, Node.js, PostgreSQL, Docker…"></div>
+                    <div class="context-field"><label for="contextConstraints">Constraints &amp; Rules</label>
+                        <textarea id="contextConstraints" placeholder="e.g., Backward compatible, no new deps, max 200 lines/file…" rows="2"></textarea></div>
+                    <div class="context-field"><label for="contextOutput">Output Format</label>
                         <select id="contextOutput">
                             <option value="">Default (Markdown)</option>
                             <option value="code_only">Code Only (no explanations)</option>
@@ -122,52 +99,61 @@
                             <option value="json">JSON Structured Output</option>
                             <option value="bullet_points">Bullet Points Summary</option>
                             <option value="table">Table Format</option>
-                        </select>
-                    </div>
+                        </select></div>
                 </div>
             </div>
 
-            <!-- Tasks Section -->
+            <!-- Variables -->
+            <div class="card" id="varsCard">
+                <div class="card-header"><span class="section-icon icon-vars">🔣</span> Variables
+                    <span class="card-hint">Reference with <code>${name}</code> in any field</span></div>
+                <div class="var-list" id="varList"></div>
+                <button class="btn btn-add-var" id="btnAddVar"><span class="plus-icon">+</span> Add Variable</button>
+            </div>
+
+            <!-- Tasks -->
             <div class="card" id="tasksCard">
-                <div class="card-header">
-                    <span class="section-icon icon-tasks">📋</span> Task Steps
-                    <span class="drag-hint">Drag via ⋮⋮ handle to reorder</span>
-                </div>
+                <div class="card-header"><span class="section-icon icon-tasks">📋</span> Steps
+                    <span class="drag-hint">Drag ⋮⋮ to reorder · drop into blocks to nest</span></div>
                 <div class="task-list" id="taskList"></div>
                 <div class="add-buttons">
-                    <button class="btn btn-add" id="btnAddTask">
-                        <span class="plus-icon">+</span> Add Task
-                    </button>
-                    <button class="btn btn-add-if" id="btnAddIf">
-                        <span class="plus-icon">⑂</span> Add If/Else
-                    </button>
-                    <button class="btn btn-add-loop" id="btnAddLoop">
-                        <span class="plus-icon">↻</span> Add Loop
-                    </button>
+                    <button class="btn btn-add" id="btnAddTask"><span class="plus-icon">+</span> Task</button>
+                    <button class="btn btn-add-if" id="btnAddIf"><span class="plus-icon">⑂</span> If/Else</button>
+                    <button class="btn btn-add-loop" id="btnAddLoop"><span class="plus-icon">↻</span> Loop</button>
+                    <button class="btn btn-add-sub" id="btnAddSub"><span class="plus-icon">🤖</span> Sub-Agent</button>
+                    <button class="btn btn-add-parallel" id="btnAddParallel"><span class="plus-icon">⇉</span> Parallel</button>
                 </div>
             </div>
         </div>
 
-        <!-- Right Column: Preview -->
+        <!-- Preview -->
         <div class="preview-column" id="previewColumn">
             <div class="card preview-card" id="previewCard">
                 <div class="card-header">
                     <span class="section-icon icon-preview">📄</span> Generated Prompt
-                    <span class="file-type-badge">Markdown</span>
+                    <div class="mode-toggle" id="modeToggle" role="group" aria-label="Output mode">
+                        <button data-mode="pseudocode" class="active">Pseudo-code</button>
+                        <button data-mode="markdown">Markdown</button>
+                    </div>
                 </div>
-                <div class="preview-block" id="previewBlock"></div>
+                <div class="preview-meta">
+                    <span class="valid-badge is-ok" id="validBadge">✓ complete</span>
+                    <span class="token-badge" id="tokenBadge">~0 tok</span>
+                </div>
+                <div class="preview-block" id="previewBlock" aria-live="polite"></div>
                 <div class="btn-group">
                     <button class="btn btn-copy" id="btnCopy">📋 Copy</button>
-                    <button class="btn btn-download" id="btnDownload">💾 Download .md</button>
-                    <button class="btn btn-outline" id="btnReset">🔄 Reset All</button>
+                    <button class="btn btn-download" id="btnDownload">💾 Download</button>
+                    <button class="btn btn-outline" id="btnExportJson">🧩 Export JSON</button>
+                    <button class="btn btn-outline" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+                    <button class="btn btn-outline" id="btnRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+                    <button class="btn btn-outline" id="btnReset">🔄 Reset</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Toast -->
-    <div class="toast" id="toast"></div>
-
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="script.js"></script>
 </body>
 </html>
