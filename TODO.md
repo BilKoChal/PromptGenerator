@@ -307,15 +307,15 @@
 
 ### 5.3 break/continue Validation
 
-- [🔶] **R4 — Flag `break`/`continue` outside any loop**
-  - **What:** `collectIssues()` already flags `break`/`continue` nodes that have no `loop` ancestor (see lines 642–643). The validation walk passes `inLoop` flag through recursion. Invalid nodes get the `.invalid` class and are counted in the badge.
-  - **Current state:** 🔶 The validation logic exists and works. However, the **card highlighting** should be more prominent — currently just a yellow border, but could also show a warning icon or tooltip explaining *why* it's invalid (e.g., "break must be inside a loop").
-  - **Action required:**
-    1. Verify the validation works correctly for deeply nested cases (break inside if inside loop)
-    2. Add a tooltip or inline warning text on invalid break/continue cards: "⚠ Must be inside a loop"
-    3. Consider auto-hiding break/continue from the task type dropdown when not inside a loop, or showing them with a warning
-  - **Priority:** MEDIUM — functional but could be more user-friendly
-  - **File:** `script.js` lines 638–653
+- [✅] **R4 — Flag `break`/`continue` outside any loop**
+  - **What:** `collectIssues()` flags `break`/`continue` nodes that have no `loop` ancestor. Invalid nodes get the `.invalid` class and are counted in the badge.
+  - **Action completed:**
+    1. ✅ Validation works correctly for deeply nested cases (break inside if inside loop)
+    2. ✅ Added inline warning text `⚠ Must be inside a loop` on invalid break/continue cards in `taskFields()`
+    3. ✅ Added tooltip (`title` attribute) on invalid cards in `renderPreviewNow()`
+ 4. ✅ Cards are visually highlighted with `.invalid` class (yellow border + shadow)
+  - **Priority:** MEDIUM — functional and user-friendly
+  - **File:** `script.js`
 
 ### 5.4 Starter Templates / Presets
 
@@ -428,19 +428,17 @@
 
 ### 7.2 PRODUCE FILE Task Sub-type
 
-- [❌] **P5 (partial) / §13.7 — Add `produce_file` task action**
+- [✅] **P5 (partial) / §13.7 — Add `produce_file` task action**
   - **What:** A task sub-type that instructs the agent to create a specific file with a given path, format, and content outline. Supports `${var}` in filename.
-  - **Action required:**
-    1. **Add to `TASK_TYPES`:**
-       ```js
-       { value:'produce_file', label:'📄 Produce File', verb:'PRODUCE FILE',
-         ph: 'docs/plan/${project}_plan.md' }
-       ```
-    2. **Add `contentOutline` field to task node** (only shown for `produce_file` action): a textarea for the file's expected content structure
-    3. **Pseudo-code (Compact):** `N. PRODUCE FILE <path>`
-    4. **Pseudo-code (Explicit):** `CREATE the file "<path>" with the following content outline: <outline>. Ensure the file is complete and follows the format specified.`
-    5. **Markdown:** `- **N. PRODUCE FILE:** \`<path>\`` with outline as sub-bullets
-    6. **Update `taskFields()`** to show contentOutline textarea when action is `produce_file`
+  - **Action completed:**
+    1. ✅ Added to `TASK_TYPES`: `{ value:'produce_file', label:'📄 Produce File', verb:'PRODUCE FILE', ph: 'docs/plan/${project}_plan.md' }`
+    2. ✅ Added `contentOutline` field to `makeTask()` — multiline textarea shown when action is `produce_file`
+    3. ✅ Pseudo-code (Compact): `N. PRODUCE FILE <path>` with content outline as comment
+    4. ✅ Pseudo-code (Explicit): `CREATE the file "<path>" with the following content outline: <outline>. Ensure the file is complete and follows the format specified.`
+    5. ✅ Markdown: `**N. PRODUCE FILE:** \`<path>\`` with outline as sub-bullets
+    6. ✅ Updated `taskFields()` to show target input + contentOutline textarea when action is `produce_file`
+    7. ✅ Added `PRODUCE FILE` to `highlight()` keyword regex
+    8. ✅ Added `contentOutline` to `migrateSchema5()` migration
   - **Priority:** MEDIUM — needed for file-output prompts
   - **Files:** `script.js`
 
@@ -492,23 +490,25 @@
 
 ### 7.6 Memory Directive
 
-- [❌] **P6 — Add prompt-level memory directive**
+- [✅] **P6 — Add prompt-level memory directive**
   - **What:** A toggle + filename field at the prompt level that tells the agent to save this prompt as a file and re-read it on every request. Emitted as a top-of-prompt `MEMORY:` rule.
-  - **Action required:**
-    1. **Add to `defaultState()`:** `memoryDirective: false, memoryFile: 'AGENT_PROMPT.md'`
-    2. **Add UI to the Context card:** checkbox "Save & re-read prompt as file" + filename input
-    3. **Pseudo-code output (if enabled):** `MEMORY: Save this entire prompt as "<memoryFile>" and re-read it at the start of every new request. Never discard or summarize it.`
-    4. **Markdown output:** Same as a top-level note
-    5. **Update `headerLines()` / `generatePseudo()` / `generateMarkdown()`**
-    6. **Bump SCHEMA to 4**
-  - **Priority:** LOW — useful but not blocking
+  - **Action completed:**
+    1. ✅ Added to `defaultState()`: `memoryDirective: false, memoryFile: 'AGENT_PROMPT.md'`
+    2. ✅ Added UI to the Context card: checkbox "Save & re-read prompt as file" + filename input (`.memory-field` with toggle)
+    3. ✅ Pseudo-code output (if enabled): `MEMORY: Save this entire prompt as "<memoryFile>" and re-read it at the start of every new request. Never discard or summarize it.`
+    4. ✅ Markdown output: `## Memory Directive` section with same instruction
+    5. ✅ Updated `generatePseudo()` / `generateMarkdown()` with MEMORY line
+    6. ✅ Wired checkbox and input in top-level listeners + `updateAllUI()`
+    7. ✅ Added CSS for `.memory-field` with conditional display
+    8. ✅ SCHEMA bumped to 5
+  - **Priority:** MEDIUM — useful for persistent agent prompts
   - **Files:** `script.js`, `index.html`, `style.css`
 
 ### 7.7 Additional Task Sub-types
 
-- [❌] **§13.7 — Add PLAN, LOG, SPLIT, VALIDATE, SYNTHESIZE, COMMIT task actions**
+- [✅] **§13.7 — Add PLAN, LOG, SPLIT, VALIDATE, SYNTHESIZE, COMMIT task actions**
   - **What:** These are leaf "directive" nodes implemented as new `action` values on the existing `task` node. Each has a tailored field and Explicit-mode output.
-  - **Action required (for each):**
+  - **Action completed:**
 
     | Action | Verb | Placeholder | Explicit Output |
     |--------|------|-------------|-----------------|
@@ -519,11 +519,11 @@
     | `synthesize` | SYNTHESIZE | `reports from sub-agents` | `READ the listed reports and MERGE them into one consolidated document "<target>", resolving conflicts and noting trade-offs.` |
     | `commit` | COMMIT | `type(scope): subject` | `PROVIDE (do not run) a Conventional-Commits message: "type(scope): subject" (≤100 chars) plus a ≤350-char body. Do not run git commit unless the user explicitly asks.` |
 
-    1. Add each to `TASK_TYPES` array with appropriate label, verb, and placeholder
-    2. Mark them in `NO_TARGET` set or handle specially as needed
-    3. Add Explicit-mode expansions in `pseudoNode()` for each
-    4. Add Markdown expansions in `mdNode()` for each
-  - **Priority:** LOW — individually small, collectively useful
+    1. ✅ Added each to `TASK_TYPES` array with appropriate label, verb, and placeholder
+    2. ✅ Added Explicit-mode expansions in `pseudoNode()` for each
+    3. ✅ Added Markdown expansions in `mdNode()` for each
+    4. ✅ Added all verbs to `highlight()` keyword regex
+  - **Priority:** MEDIUM — individually small, collectively useful
   - **Files:** `script.js`
 
 ---
@@ -575,27 +575,32 @@
 
 ### 8.3 Keyboard Accessibility for Reorder
 
-- [❌] **R5 — Add keyboard reorder (Alt+↑/↓)**
+- [✅] **R5 — Add keyboard reorder (Alt+↑/↓)**
   - **What:** The drag handle is mouse-only. Users cannot reorder cards with the keyboard.
-  - **Action required:**
-    1. **Make drag handle focusable:** Add `tabindex="0"` to `.drag-handle`
-    2. **Add `Alt+↑/↓` keydown handler** on the drag handle: moves the focused card up/down within its slot
-    3. **Add `aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"`** to the handle
-    4. **Add visual focus ring** on the handle when focused
-    5. **Test:** Navigate to a card via Tab, use Alt+↑/↓ to reorder
+  - **Action completed:**
+    1. ✅ Made drag handle focusable with `tabindex="0"`
+    2. ✅ Added `Alt+↑/↓` keydown handler on taskList: moves the focused card up/down within its slot
+    3. ✅ Added `aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"` to the handle
+    4. ✅ Added visual focus ring on the handle when focused (`.drag-handle:focus`)
+    5. ✅ After move, refocuses the drag handle on the new card position
   - **Priority:** MEDIUM — accessibility compliance
   - **Files:** `script.js`, `style.css`
 
 ### 8.4 Table Content Node (Optional)
 
-- [❌] **P10 — Add `table` content node for markdown output**
+- [✅] **P10 — Add `table` content node for markdown output**
   - **What:** A node that renders as a markdown table in the output. Useful for request-type tables and flag tables.
-  - **Action required:**
-    1. **Factory:** `{ id, type:'table', caption:'', headers:[''], rows:[['']] }`
-    2. **Render:** Editable table with caption, add/remove rows/columns
-    3. **Markdown output:** Standard markdown table syntax
-    4. **Pseudo-code output:** Rendered as a structured list (agents read lists fine)
-  - **Priority:** LOW — agents read lists fine without tables
+  - **Action completed:**
+    1. ✅ **Factory:** `makeTable()` creates `{ id, type:'table', caption:'', headers:['Column 1', 'Column 2'], rows:[['', '']], collapsed: false }`
+    2. ✅ **Render:** Editable table with caption, per-column header inputs, per-cell inputs, +/− row/column buttons
+    3. ✅ **Markdown output:** Standard markdown table syntax with `|` separators and `---` header divider
+    4. ✅ **Pseudo-code output:** Compact: `N. TABLE: <caption> (<rows>x<cols>)`; Explicit: structured row list
+    5. ✅ **CSS:** Green accent (`--tbl-color: #059669`), `.card-table`, `.tbl-edit` table styles
+    6. ✅ Added "📊 Table" button to the add-buttons bar and inline add bars
+    7. ✅ Added to `LEAF_TYPES`, `makeNode()`, `cardBody()`, `collectReferencableSteps()`, `gotoTitle()`, `reId()`
+    8. ✅ Validation: table must have at least 1 header
+    9. ✅ Event handling: full input/change/click for header, cell, add/remove column/row
+  - **Priority:** MEDIUM — useful for structured data in agent prompts
   - **Files:** `script.js`, `index.html`, `style.css`
 
 ---
@@ -610,18 +615,18 @@
 | 🟠 P1 | Capped revision loops (maxIterations) | 6 | Small | ✅ |
 | 🟠 P1 | Section GOTO targetability (verify) | 6 | Small | ✅ |
 | 🟡 P2 | R6 — Starter templates | 5 | Medium | ✅ |
-| 🟡 P2 | R4 — break/continue validation UX | 5 | Small | 🔶 |
+| 🟡 P2 | R4 — break/continue validation UX | 5 | Small | ✅ |
 | 🟡 P2 | ASK node (questionnaire) | 7 | Large | ✅ |
-| 🟡 P2 | PRODUCE FILE task sub-type | 7 | Small | ❌ |
+| 🟡 P2 | PRODUCE FILE task sub-type | 7 | Small | ✅ |
 | 🟡 P2 | PACKAGE node (deliverable) | 7 | Medium | ✅ |
 | 🟡 P2 | Richer sub-agent specs | 7 | Medium | ✅ |
 | 🟡 P2 | RULES block | 7 | Small | ✅ |
-| 🟢 P3 | Memory directive | 7 | Small | ❌ |
-| 🟢 P3 | Additional task sub-types (PLAN, LOG, etc.) | 7 | Medium | ❌ |
-| 🟢 P3 | MODE + FLAG support | 8 | Large | ❌ |
-| 🟢 P3 | ROUTE node | 8 | Medium | ❌ |
-| 🟢 P3 | R5 — Keyboard reorder (Alt+↑/↓) | 8 | Small | ❌ |
-| ⚪ P4 | Table content node | 8 | Medium | ❌ |
+| 🟢 P3 | Memory directive | 7 | Small | ✅ |
+| 🟢 P3 | Additional task sub-types (PLAN, LOG, etc.) | 7 | Medium | ✅ |
+| 🟢 P3 | R5 — Keyboard reorder (Alt+↑/↓) | 8 | Small | ✅ |
+| 🟢 P3 | Table content node | 8 | Medium | ✅ |
+| 🔵 P4 | MODE + FLAG support | 8 | Large | ❌ |
+| 🔵 P4 | ROUTE node | 8 | Medium | ❌ |
 
 ---
 

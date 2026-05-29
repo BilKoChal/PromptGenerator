@@ -117,6 +117,12 @@
                             <option value="bullet_points">Bullet Points Summary</option>
                             <option value="table">Table Format</option>
                         </select></div>
+                    <div class="context-field memory-field">
+                        <label><input type="checkbox" id="chkMemory"> Save &amp; re-read prompt as file</label>
+                        <div class="memory-file-wrap">
+                            <input type="text" id="memoryFile" placeholder="AGENT_PROMPT.md">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -151,6 +157,7 @@
                     <button class="btn btn-add-parallel" id="btnAddParallel"><span class="plus-icon">⇉</span> Parallel</button>
                     <button class="btn btn-add-ask" id="btnAddAsk"><span class="plus-icon">❓</span> Ask</button>
                     <button class="btn btn-add-package" id="btnAddPackage"><span class="plus-icon">📦</span> Package</button>
+                    <button class="btn btn-add-table" id="btnAddTable"><span class="plus-icon">📊</span> Table</button>
                 </div>
             </div>
         </div>

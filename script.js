@@ -38,6 +38,13 @@
         { value: 'update',      label: '✏️ Update',     verb: 'UPDATE',    ph: 'src/api/auth.ts — add refresh token logic' },
         { value: 'delete',      label: '🗑️ Delete',     verb: 'DELETE',    ph: 'src/legacy/old-utils.js' },
         { value: 'rename',      label: '📛 Rename',     verb: 'RENAME',    ph: 'src/old-name.ts → src/new-name.ts' },
+        { value: 'produce_file', label: '📄 Produce File', verb: 'PRODUCE FILE', ph: 'docs/plan/${project}_plan.md' },
+        { value: 'plan',       label: '📋 Plan',       verb: 'PLAN',       ph: 'docs/${project}_plan.md' },
+        { value: 'log',        label: '📝 Log',        verb: 'LOG',        ph: 'docs/worklog.md' },
+        { value: 'split',      label: '✂️ Split',      verb: 'SPLIT',      ph: 'criteria for splitting…' },
+        { value: 'validate',   label: '✅ Validate',    verb: 'VALIDATE',   ph: 'npm test' },
+        { value: 'synthesize', label: '🔗 Synthesize',  verb: 'SYNTHESIZE', ph: 'reports from sub-agents' },
+        { value: 'commit',     label: '📌 Commit',     verb: 'COMMIT',     ph: 'type(scope): subject' },
         { value: 'rules',       label: '📜 Rules / Conventions', verb: 'RULES', ph: 'Naming conventions, commit format…' },
         { value: 'goto',        label: '↩️ Go To Step', verb: 'GOTO',      ph: '' },
         { value: 'break',       label: '⛔ Break Loop', verb: 'BREAK',     ph: '' },
@@ -65,7 +72,7 @@
     const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel', 'ask'];
     const isContainer = (n) => CONTAINER_TYPES.includes(n.type);
     // Leaf-only types (for reference, validation, etc.)
-    const LEAF_TYPES = ['task', 'gate', 'package'];
+    const LEAF_TYPES = ['task', 'gate', 'package', 'table'];
 
     // ──────────────────────────────────────
     // IDs (stable, collision-resistant)  [fixes B13]
@@ -81,7 +88,7 @@
     // Node factories
     // ──────────────────────────────────────
     function makeTask(action) {
-        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '' };
+        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '' };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
@@ -110,6 +117,15 @@
             collapsed: false
         };
     }
+    function makeTable() {
+        return {
+            id: uid('tbl'), type: 'table',
+            caption: '',
+            headers: ['Column 1', 'Column 2'],
+            rows: [['', '']],
+            collapsed: false
+        };
+    }
     function makeNode(kind) {
         if (kind === 'section') return makeSection();
         if (kind === 'if') return makeIf();
@@ -119,6 +135,7 @@
         if (kind === 'gate') return makeGate();
         if (kind === 'ask') return makeAsk();
         if (kind === 'package') return makePackage();
+        if (kind === 'table') return makeTable();
         return makeTask();
     }
 
@@ -222,6 +239,8 @@
                 out.push({ id: n.id, label: 'Step ' + num + ' — ASK ' + ((n.questions && n.questions[0] && n.questions[0].text) || '').slice(0, 20) });
             } else if (n.type === 'package') {
                 out.push({ id: n.id, label: 'Step ' + num + ' — PACKAGE ' + (n.archiveName || '').slice(0, 20) });
+            } else if (n.type === 'table') {
+                out.push({ id: n.id, label: 'Step ' + num + ' — TABLE ' + (n.caption || '').slice(0, 20) });
             }
         });
         return out;
@@ -240,11 +259,12 @@
         if (n.type === 'gate') return 'GATE: ' + (n.prompt || 'confirm');
         if (n.type === 'ask') return 'ASK: ' + ((n.questions && n.questions[0] && n.questions[0].text) || '');
         if (n.type === 'package') return 'PACKAGE: ' + (n.archiveName || '');
+        if (n.type === 'table') return 'TABLE: ' + (n.caption || '');
         return n.type;
     }
     function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
     function reId(node) {
-        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type === 'package' ? 'pkg' : node.type === 'ask' ? 'ask' : node.type.slice(0, 2));
+        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type === 'package' ? 'pkg' : node.type === 'ask' ? 'ask' : node.type === 'table' ? 'tbl' : node.type.slice(0, 2));
         slotsOf(node).forEach(s => s.arr.forEach(reId));
         if (node.type === 'subagent') (node.agents || []).forEach(a => { a.id = uid('ag'); });
         if (node.type === 'ask') (node.questions || []).forEach(q => { q.id = uid('q'); });
@@ -258,7 +278,7 @@
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
     const TEMPLATES_KEY = 'prompt_generator_templates';
     const THEME_KEY = 'prompt_generator_theme';
-    const SCHEMA = 4;
+    const SCHEMA = 5;
 
     function defaultState() {
         return {
@@ -267,6 +287,7 @@
             customRole: '',
             agentic: false, subagent: false, verbose: false, strict: false,
             contextProject: '', contextTech: '', contextConstraints: '', contextOutput: '',
+            memoryDirective: false, memoryFile: 'AGENT_PROMPT.md',
             variables: [],
             resources: [],
             outputMode: 'pseudocode',
@@ -309,11 +330,13 @@
                 state.schema = SCHEMA;
                 migrateOldActions(state.nodes);
                 migrateSchema4(state.nodes);
+                migrateSchema5(state.nodes);
             } else {
                 const legacy = localStorage.getItem('prompt_generator_state_v4') || localStorage.getItem('prompt_generator_state_v3');
                 migrate(saved.tasks ? saved : (legacy ? JSON.parse(legacy) : saved));
                 migrateOldActions(state.nodes);
                 migrateSchema4(state.nodes);
+                migrateSchema5(state.nodes);
             }
         } catch (e) { state = defaultState(); }
     }
@@ -350,6 +373,15 @@
                 });
             }
             if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema4(s.arr));
+        });
+    }
+
+    // Schema 5 migration: add contentOutline to task nodes, memoryDirective/memoryFile to root
+    function migrateSchema5(nodes) {
+        if (!nodes) return;
+        nodes.forEach(n => {
+            if (n.type === 'task' && !('contentOutline' in n)) { n.contentOutline = ''; }
+            if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema5(s.arr));
         });
     }
 
@@ -491,6 +523,9 @@
         let out = 'ROLE: ' + h.role + (h.caps.length ? '  [' + h.caps.join(', ') + ']' : '') + '\n';
         if (h.vars.length) out += 'VARS: ' + h.vars.map(v => v.name + '=' + (v.value || '?')).join('; ') + '\n';
         if (h.ctx.length) out += 'CONTEXT: ' + h.ctx.join('; ') + '\n';
+        if (state.memoryDirective) {
+            out += 'MEMORY: Save this entire prompt as "' + (state.memoryFile || 'AGENT_PROMPT.md') + '" and re-read it at the start of every new request. Never discard or summarize it.\n';
+        }
         out += resourcesPseudo();
         out += '\nSTEPS\n';
         if (!state.nodes.length) out += '  (no steps)\n';
@@ -545,10 +580,76 @@
             if (n.action === 'continue') {
                 return ind + num + (isExplicit() ? '. CONTINUE — skip the rest of this iteration and start the next one.' : '. CONTINUE') + '\n';
             }
+            if (n.action === 'produce_file') {
+                const path = n.target ? interp(n.target) : '<path?>';
+                const outline = (n.contentOutline || '').trim();
+                if (isExplicit()) {
+                    let s = ind + num + '. CREATE the file "' + path + '" with the following content outline: ' + (outline || '<no outline>') + '. Ensure the file is complete and follows the format specified.\n';
+                    return s;
+                }
+                let s = ind + num + '. PRODUCE FILE ' + path;
+                if (outline) s += '  // ' + outline.replace(/\n+/g, '; ');
+                return s + '\n';
+            }
+            if (n.action === 'plan') {
+                const target = n.target ? interp(n.target) : '<target?>';
+                if (isExplicit()) {
+                    return ind + num + '. CREATE a plan document "' + target + '" with the next sequential Task-ID (continue from the highest existing).\n';
+                }
+                return ind + num + '. PLAN ' + target + '\n';
+            }
+            if (n.action === 'log') {
+                const target = n.target ? interp(n.target) : '<target?>';
+                if (isExplicit()) {
+                    return ind + num + '. WRITE a worklog "' + target + '" recording: start/end time, actions taken, problems + resolutions, files changed, test results, deviations.\n';
+                }
+                return ind + num + '. LOG ' + target + '\n';
+            }
+            if (n.action === 'split') {
+                const target = n.target ? interp(n.target) : '<target?>';
+                if (isExplicit()) {
+                    return ind + num + '. If this task is too large, SPLIT it into smaller sub-tasks, record them in the plan, and do not write code yet — report the breakdown to the user.\n';
+                }
+                return ind + num + '. SPLIT ' + target + '\n';
+            }
+            if (n.action === 'validate') {
+                const target = n.target ? interp(n.target) : '<target?>';
+                if (isExplicit()) {
+                    return ind + num + '. Run the tests ("' + target + '"). If ANY test fails: do NOT mark this step complete — report the failures to the user and wait. Only continue when all tests pass or the user explicitly overrides.\n';
+                }
+                return ind + num + '. VALIDATE ' + target + '\n';
+            }
+            if (n.action === 'synthesize') {
+                const target = n.target ? interp(n.target) : '<target?>';
+                if (isExplicit()) {
+                    return ind + num + '. READ the listed reports and MERGE them into one consolidated document "' + target + '", resolving conflicts and noting trade-offs.\n';
+                }
+                return ind + num + '. SYNTHESIZE ' + target + '\n';
+            }
+            if (n.action === 'commit') {
+                const target = n.target ? interp(n.target) : '<target?>';
+                if (isExplicit()) {
+                    return ind + num + '. PROVIDE (do not run) a Conventional-Commits message: "type(scope): subject" (≤100 chars) plus a ≤350-char body. Do not run git commit unless the user explicitly asks.\n';
+                }
+                return ind + num + '. COMMIT ' + target + '\n';
+            }
             const verb = getVerb(n);
             let line = ind + num + '. ' + verb + (n.target ? ' ' + interp(n.target) : ' <target?>');
             if (n.details && n.details.trim()) line += '  // ' + interp(n.details).trim().replace(/\n+/g, '; ');
             return line + '\n';
+        }
+        if (n.type === 'table') {
+            const caption = n.caption ? interp(n.caption) : 'Untitled';
+            const rows = n.rows || [];
+            const cols = (n.headers || []).length;
+            if (isExplicit()) {
+                let s = ind + num + '. TABLE — ' + caption + ':\n';
+                rows.forEach((row, ri) => {
+                    s += ind + '   Row ' + (ri + 1) + ': ' + row.map((cell, ci) => (n.headers[ci] || 'Col ' + (ci + 1)) + '=' + (interp(cell) || '(empty)')).join(', ') + '\n';
+                });
+                return s;
+            }
+            return ind + num + '. TABLE: ' + caption + ' (' + rows.length + 'x' + cols + ')\n';
         }
         if (n.type === 'gate') {
             const prompt = n.prompt ? interp(n.prompt) : '<confirmation prompt?>';
@@ -724,6 +825,9 @@
         if (state.strict)   md += '- **strict** — follow instructions exactly.\n';
         if (h.vars.length) { md += '\n## Variables\n'; h.vars.forEach(v => md += '- `' + v.name + '` = ' + (v.value || '_(unset)_') + '\n'); }
         if (h.ctx.length)  { md += '\n## Context & Constraints\n'; h.ctx.forEach(c => md += '- ' + c.replace('=', ': ') + '\n'); }
+        if (state.memoryDirective) {
+            md += '\n## Memory Directive\nSave this entire prompt as `' + (state.memoryFile || 'AGENT_PROMPT.md') + '` and re-read it at the start of every new request. Never discard or summarize it.\n';
+        }
         md += resourcesMd();
         md += '\n## Tasks\nPerform the following in order:\n\n';
         if (!state.nodes.length) md += '_(no tasks defined)_\n';
@@ -757,10 +861,63 @@
                 return s;
             }
             if (n.action === 'goto') return ind + '- **' + num + '. GOTO** Step ' + (stepNumberOf(n.gotoRef) || '?') + '\n';
+            if (n.action === 'produce_file') {
+                const path = n.target ? interp(n.target) : '(not specified)';
+                let s = ind + '- **' + num + '. PRODUCE FILE:** `' + path + '`\n';
+                const outline = (n.contentOutline || '').trim();
+                if (outline) {
+                    outline.split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
+                }
+                return s;
+            }
+            if (n.action === 'plan') {
+                let s = ind + '- **' + num + '. PLAN:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+                if (isExplicit()) s += ind + '  - Create a plan document with the next sequential Task-ID\n';
+                return s;
+            }
+            if (n.action === 'log') {
+                let s = ind + '- **' + num + '. LOG:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+                if (isExplicit()) s += ind + '  - Record: start/end time, actions, problems + resolutions, files changed, test results\n';
+                return s;
+            }
+            if (n.action === 'split') {
+                let s = ind + '- **' + num + '. SPLIT:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+                if (isExplicit()) s += ind + '  - Break into smaller sub-tasks; do not write code yet\n';
+                return s;
+            }
+            if (n.action === 'validate') {
+                let s = ind + '- **' + num + '. VALIDATE:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+                if (isExplicit()) s += ind + '  - Run tests; if any fail, report and wait\n';
+                return s;
+            }
+            if (n.action === 'synthesize') {
+                let s = ind + '- **' + num + '. SYNTHESIZE:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+                if (isExplicit()) s += ind + '  - Merge reports into one document, resolve conflicts\n';
+                return s;
+            }
+            if (n.action === 'commit') {
+                let s = ind + '- **' + num + '. COMMIT:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+                if (isExplicit()) s += ind + '  - Provide Conventional-Commits message (do not run git commit)\n';
+                return s;
+            }
             if (NO_TARGET[n.action]) return ind + '- **' + num + '. ' + t.verb + '**\n';
             const verb = getVerb(n);
             let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
             if (n.details && n.details.trim()) interp(n.details).split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
+            return s;
+        }
+        if (n.type === 'table') {
+            const caption = n.caption ? interp(n.caption) : 'Untitled';
+            const headers = n.headers || [];
+            const rows = n.rows || [];
+            let s = ind + '- **' + num + '. TABLE:** ' + caption + '\n\n';
+            if (headers.length) {
+                s += ind + '| ' + headers.map(h => interp(h)).join(' | ') + ' |\n';
+                s += ind + '| ' + headers.map(() => '---').join(' | ') + ' |\n';
+                rows.forEach(row => {
+                    s += ind + '| ' + headers.map((_, ci) => interp(row[ci] || '')).join(' | ') + ' |\n';
+                });
+            }
             return s;
         }
         if (n.type === 'gate') {
@@ -889,6 +1046,7 @@
                     if (hasEmptyQ || !questions.length) { missing++; badIds[n.id] = 1; }
                 }
                 if (n.type === 'package' && !(n.archiveName || '').trim()) { missing++; badIds[n.id] = 1; }
+                if (n.type === 'table' && !(n.headers || []).length) { missing++; badIds[n.id] = 1; }
                 if (isContainer(n)) {
                     const childInLoop = inLoop || n.type === 'loop';
                     slotsOf(n).forEach(s => rec(s.arr, childInLoop));
@@ -913,10 +1071,22 @@
         }
         // mark invalid cards in the editor
         if (taskList) {
-            taskList.querySelectorAll('.task-card.invalid').forEach(c => c.classList.remove('invalid'));
+            taskList.querySelectorAll('.task-card.invalid').forEach(c => { c.classList.remove('invalid'); c.removeAttribute('title'); c.querySelectorAll('.ref-warn-inline').forEach(s => s.remove()); });
             Object.keys(issues.badIds).forEach(id => {
                 const card = taskList.querySelector('.task-card[data-node-id="' + id + '"]');
-                if (card) card.classList.add('invalid');
+                if (card) {
+                    card.classList.add('invalid');
+                    // R4: Add tooltip for break/continue outside loop
+                    const f = findNode(id);
+                    if (f && f.node.type === 'task' && (f.node.action === 'break' || f.node.action === 'continue')) {
+                        card.title = '⚠ Must be inside a loop';
+                        const warn = document.createElement('span');
+                        warn.className = 'ref-warn ref-warn-inline';
+                        warn.textContent = '⚠ Must be inside a loop';
+                        const content = card.querySelector('.task-content');
+                        if (content) content.insertBefore(warn, content.firstChild);
+                    }
+                }
             });
         }
     }
@@ -926,14 +1096,14 @@
             .replace(/^(# .+)$/gm, '<span class="md-h1">$1</span>')
             .replace(/^(## .+)$/gm, '<span class="md-h2">$1</span>')
             .replace(/^(### .+)$/gm, '<span class="md-h3">$1</span>')
-            .replace(/^(ROLE:|VARS:|CONTEXT:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
+            .replace(/^(ROLE:|VARS:|CONTEXT:|MEMORY:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
             .replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">**$1**</span>')
             .replace(/`([^`]+?)`/g, '<span class="md-code">`$1`</span>')
             .replace(/(\/\/[^\n]*)$/gm, '<span class="md-comment">$1</span>')
             .replace(/\$\{[A-Za-z0-9_]+(?::UNDEFINED)?\}/g, '<span class="md-var">$&</span>')
             .replace(/(^|[^A-Za-z0-9_@])@([A-Za-z0-9_]+(?::UNDEFINED)?)/g, '$1<span class="md-resource">@$2</span>')
             .replace(/&lt;([a-zA-Z?: ]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
-            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm|ASK|PACKAGE|RULES|PRODUCE FILE)\b/g, '<span class="md-keyword">$1</span>');
+            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm|ASK|PACKAGE|RULES|PRODUCE FILE|PLAN|LOG|SPLIT|VALIDATE|SYNTHESIZE|COMMIT|TABLE|MEMORY)\b/g, '<span class="md-keyword">$1</span>');
     }
 
     // ──────────────────────────────────────
@@ -970,11 +1140,12 @@
              node.type === 'subagent' ? ' card-subagent' : node.type === 'parallel' ? ' card-parallel' :
              node.type === 'gate' ? ' card-gate' :
              node.type === 'ask' ? ' card-ask' :
-             node.type === 'package' ? ' card-package' : '');
+             node.type === 'package' ? ' card-package' :
+             node.type === 'table' ? ' card-table' : '');
 
         card.innerHTML =
             '<span class="task-number">' + numberFor(node) + '</span>' +
-            '<div class="drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</div>' +
+            '<div class="drag-handle" tabindex="0" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</div>' +
             '<div class="task-content">' + cardBody(node) + '</div>' +
             '<div class="task-actions">' +
                 (isContainer(node) ? '<button class="btn-icon btn-collapse" data-action="collapse" title="Collapse" aria-label="Collapse">' + (node.collapsed ? '▸' : '▾') + '</button>' : '') +
@@ -1002,6 +1173,7 @@
         if (node.type === 'parallel') return '<div class="block-label label-parallel">⇉ Parallel block (branches run concurrently)</div>';
         if (node.type === 'ask')      return askHead(node);
         if (node.type === 'package')  return packageHead(node);
+        if (node.type === 'table')    return tableHead(node);
         return '';
     }
 
@@ -1045,11 +1217,17 @@
             html += '<input type="text" class="task-param-input" data-field="target" value="' + attr(node.target) + '" placeholder="' + attr(ph) + '">';
         } else {
             html += '<span class="task-noparam">no parameters</span>';
+            if (node.action === 'break' || node.action === 'continue') {
+                if (lastBadIds[node.id]) html += '<span class="ref-warn">⚠ Must be inside a loop</span>';
+            }
         }
         html += '</div>';
         // Rules textarea
         if (node.action === 'rules') {
             html += '<textarea class="task-details-input rules-textarea" data-field="rulesList" placeholder="Rules (one per line), e.g.:&#10;Use camelCase for variables&#10;All commits must follow Conventional Commits&#10;No any types in TypeScript" rows="4">' + escapeHtml(node.rulesList || '') + '</textarea>';
+        } else if (node.action === 'produce_file') {
+            html += '<textarea class="task-details-input" data-field="contentOutline" placeholder="Content outline (one point per line), e.g.:&#10;# Project Plan&#10;## Overview&#10;## Architecture&#10;## Timeline" rows="4">' + escapeHtml(node.contentOutline || '') + '</textarea>';
+            html += '<textarea class="task-details-input" data-field="details" placeholder="Notes / acceptance criteria (optional)" rows="2">' + escapeHtml(node.details) + '</textarea>';
         } else if (!NO_TARGET[node.action]) {
             html += '<textarea class="task-details-input" data-field="details" placeholder="Notes / acceptance criteria (optional)" rows="2">' + escapeHtml(node.details) + '</textarea>';
         }
@@ -1132,6 +1310,33 @@
             '<input type="text" class="pkg-name" data-field="archiveName" value="' + attr(node.archiveName) + '" placeholder="Archive name, e.g. project_${var}.zip">' +
             '<textarea class="pkg-tree" data-field="tree" placeholder="Folder tree layout, e.g.:&#10;project/&#10;├── src/&#10;│   ├── index.ts&#10;│   └── utils.ts&#10;├── tests/&#10;└── README.md" rows="6">' + escapeHtml(node.tree || '') + '</textarea>' +
             '<input type="text" class="pkg-note" data-field="filesNote" value="' + attr(node.filesNote) + '" placeholder="Note about files (optional)">';
+    }
+
+    function tableHead(node) {
+        const headers = node.headers || ['Column 1', 'Column 2'];
+        const rows = node.rows || [['', '']];
+        let html = '<div class="block-label label-table">📊 Table</div>' +
+            '<input type="text" class="tbl-caption" data-field="caption" value="' + attr(node.caption) + '" placeholder="Table caption (optional)">' +
+            '<div class="tbl-wrap"><table class="tbl-edit"><thead><tr>';
+        headers.forEach((h, ci) => {
+            html += '<th><input class="tbl-header-input" data-field="tbl_header" data-colindex="' + ci + '" value="' + attr(h) + '" placeholder="Col ' + (ci + 1) + '"></th>';
+        });
+        html += '</tr></thead><tbody>';
+        rows.forEach((row, ri) => {
+            html += '<tr>';
+            headers.forEach((_, ci) => {
+                html += '<td><input data-field="tbl_cell" data-rowindex="' + ri + '" data-colindex="' + ci + '" value="' + attr(row[ci] || '') + '" placeholder="…"></td>';
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        html += '<div class="tbl-actions">' +
+            '<button data-action="tblAddCol">+ Column</button>' +
+            '<button data-action="tblRemCol">− Column</button>' +
+            '<button data-action="tblAddRow">+ Row</button>' +
+            '<button data-action="tblRemRow">− Row</button>' +
+        '</div>';
+        return html;
     }
 
     // ──────────────────────────────────────
@@ -1261,7 +1466,8 @@
             '<button data-add="subagent">+ Sub-Agent</button>' +
             '<button data-add="parallel">+ Parallel</button>' +
             '<button data-add="ask">+ Ask</button>' +
-            '<button data-add="package">+ Package</button>';
+            '<button data-add="package">+ Package</button>' +
+            '<button data-add="table">+ Table</button>';
         dz.appendChild(bar);
         return dz;
     }
@@ -1394,6 +1600,27 @@
             if (f && f.node.elseifs[elseifIdx]) { f.node.elseifs[elseifIdx].condition = e.target.value; updatePreview(); saveState(); }
             return;
         }
+        // Table node fields
+        if (field === 'tbl_header') {
+            const f = findNode(id);
+            const ci = e.target.dataset.colindex;
+            if (f && f.node.type === 'table' && ci !== undefined) {
+                f.node.headers[+ci] = e.target.value;
+                updatePreview(); saveState();
+            }
+            return;
+        }
+        if (field === 'tbl_cell') {
+            const f = findNode(id);
+            const ri = e.target.dataset.rowindex;
+            const ci = e.target.dataset.colindex;
+            if (f && f.node.type === 'table' && ri !== undefined && ci !== undefined) {
+                if (!f.node.rows[+ri]) f.node.rows[+ri] = [];
+                f.node.rows[+ri][+ci] = e.target.value;
+                updatePreview(); saveState();
+            }
+            return;
+        }
         if (field) setField(id, field, e.target.value, false);
     });
 
@@ -1503,6 +1730,33 @@
                 pushHistory(); renderTasks(); saveState();
             }
         }
+        // Table node actions
+        else if (action === 'tblAddCol') {
+            if (f && f.node.type === 'table') {
+                f.node.headers.push('Column ' + (f.node.headers.length + 1));
+                f.node.rows.forEach(r => r.push(''));
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
+        else if (action === 'tblRemCol') {
+            if (f && f.node.type === 'table' && f.node.headers.length > 1) {
+                f.node.headers.pop();
+                f.node.rows.forEach(r => r.pop());
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
+        else if (action === 'tblAddRow') {
+            if (f && f.node.type === 'table') {
+                f.node.rows.push(new Array(f.node.headers.length).fill(''));
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
+        else if (action === 'tblRemRow') {
+            if (f && f.node.type === 'table' && f.node.rows.length > 1) {
+                f.node.rows.pop();
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
     });
 
     // ──────────────────────────────────────
@@ -1571,6 +1825,9 @@
     const contextTech = document.getElementById('contextTech');
     const contextConstraints = document.getElementById('contextConstraints');
     const contextOutput = document.getElementById('contextOutput');
+    const chkMemory = document.getElementById('chkMemory');
+    const memoryFileInput = document.getElementById('memoryFile');
+    const memoryField = chkMemory ? chkMemory.closest('.memory-field') : null;
     const varList = document.getElementById('varList');
     const btnAddVar = document.getElementById('btnAddVar');
     const resList = document.getElementById('resList');
@@ -1594,6 +1851,7 @@
     document.getElementById('btnAddParallel').addEventListener('click', () => addNodeTo(null, null, 'parallel'));
     document.getElementById('btnAddAsk').addEventListener('click', () => addNodeTo(null, null, 'ask'));
     document.getElementById('btnAddPackage').addEventListener('click', () => addNodeTo(null, null, 'package'));
+    document.getElementById('btnAddTable').addEventListener('click', () => addNodeTo(null, null, 'table'));
 
     // ──────────────────────────────────────
     // Variables  [5.1]
@@ -1714,6 +1972,12 @@
     contextTech.addEventListener('input', () => { state.contextTech = contextTech.value; updatePreview(); });
     contextConstraints.addEventListener('input', () => { state.contextConstraints = contextConstraints.value; updatePreview(); });
     contextOutput.addEventListener('change', () => { state.contextOutput = contextOutput.value; updatePreview(); pushHistory(); });
+    chkMemory && chkMemory.addEventListener('change', () => {
+        state.memoryDirective = chkMemory.checked;
+        if (memoryField) memoryField.classList.toggle('enabled', state.memoryDirective);
+        updatePreview(); pushHistory();
+    });
+    memoryFileInput && memoryFileInput.addEventListener('input', () => { state.memoryFile = memoryFileInput.value; updatePreview(); });
 
     modeToggle.addEventListener('click', (e) => {
         const opt = e.target.closest('[data-mode]'); if (!opt) return;
@@ -1735,6 +1999,9 @@
         contextTech.value = state.contextTech || '';
         contextConstraints.value = state.contextConstraints || '';
         contextOutput.value = state.contextOutput || '';
+        if (chkMemory) chkMemory.checked = state.memoryDirective;
+        if (memoryFileInput) memoryFileInput.value = state.memoryFile || 'AGENT_PROMPT.md';
+        if (memoryField) memoryField.classList.toggle('enabled', state.memoryDirective);
         modeToggle.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.outputMode));
         if (verbosityToggle) verbosityToggle.querySelectorAll('[data-verb]').forEach(b => b.classList.toggle('active', b.dataset.verb === (state.verbosity || 'explicit')));
         renderVariables();
@@ -2134,6 +2401,31 @@
     // ──────────────────────────────────────
     // Keyboard shortcuts
     // ──────────────────────────────────────
+    // R5: Keyboard reorder — Alt+ArrowUp/Alt+ArrowDown on drag handles
+    taskList.addEventListener('keydown', (e) => {
+        if (!e.altKey) return;
+        const handle = e.target.closest('.drag-handle');
+        if (!handle) return;
+        const card = handle.closest('.task-card');
+        if (!card) return;
+        const id = card.dataset.nodeId;
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            moveWithin(id, -1);
+            requestAnimationFrame(() => {
+                const newCard = taskList.querySelector('.task-card[data-node-id="' + id + '"] .drag-handle');
+                if (newCard) newCard.focus();
+            });
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            moveWithin(id, 1);
+            requestAnimationFrame(() => {
+                const newCard = taskList.querySelector('.task-card[data-node-id="' + id + '"] .drag-handle');
+                if (newCard) newCard.focus();
+            });
+        }
+    });
+
     document.addEventListener('keydown', (e) => {
         const typing = ['INPUT', 'TEXTAREA', 'SELECT'].indexOf(document.activeElement.tagName) !== -1;
         if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) closeSidebar();
@@ -2152,5 +2444,5 @@
     renderTemplateList();
     renderWorkflowList();
     pushHistory();
-    console.log('Prompt Generator (tree model, schema 4) ready');
+    console.log('Prompt Generator (tree model, schema 5) ready');
 })();
