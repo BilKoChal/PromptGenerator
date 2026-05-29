@@ -34,6 +34,10 @@
         { value: 'migrate',     label: '📦 Migrate',    verb: 'MIGRATE',   ph: 'from REST to GraphQL…' },
         { value: 'configure',   label: '⚙️ Configure',  verb: 'CONFIGURE', ph: 'CI/CD pipeline with GH Actions…' },
         { value: 'monitor',     label: '📊 Monitor',    verb: 'MONITOR',   ph: 'API latency and error rates…' },
+        { value: 'create',      label: '✨ Create',     verb: 'CREATE',    ph: 'src/components/Button.tsx' },
+        { value: 'update',      label: '✏️ Update',     verb: 'UPDATE',    ph: 'src/api/auth.ts — add refresh token logic' },
+        { value: 'delete',      label: '🗑️ Delete',     verb: 'DELETE',    ph: 'src/legacy/old-utils.js' },
+        { value: 'rename',      label: '📛 Rename',     verb: 'RENAME',    ph: 'src/old-name.ts → src/new-name.ts' },
         { value: 'goto',        label: '↩️ Go To Step', verb: 'GOTO',      ph: '' },
         { value: 'break',       label: '⛔ Break Loop', verb: 'BREAK',     ph: '' },
         { value: 'continue',    label: '⏭️ Continue',   verb: 'CONTINUE',  ph: '' },
@@ -41,6 +45,15 @@
     ];
     const TASK_TYPE_MAP = Object.fromEntries(TASK_TYPES.map(t => [t.value, t]));
     const NO_TARGET = { goto: 1, break: 1, continue: 1 };
+
+    // Actions that support a File / Folder target-type toggle
+    const HAS_TARGET_TYPE = { create: 1, update: 1, delete: 1, rename: 1 };
+    const TARGET_TYPE_PH = {
+        create:  { file: 'src/components/Button.tsx',                    folder: 'src/components/ui' },
+        update:  { file: 'src/api/auth.ts — add refresh token logic',   folder: 'src/config/ — update environment settings' },
+        delete:  { file: 'src/legacy/old-utils.js',                     folder: 'src/legacy/old-module' },
+        rename:  { file: 'src/old-name.ts → src/new-name.ts',           folder: 'src/old-dir → src/new-dir' },
+    };
 
     const LOOP_TYPES = [
         { value: 'for_each', label: 'For Each (iterate items)' },
@@ -65,7 +78,7 @@
     // Node factories
     // ──────────────────────────────────────
     function makeTask(action) {
-        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '' };
+        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file' };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeLoop()     { return { id: uid('lp'), type: 'loop', loopType: 'for_each', source: '', itemVar: 'item', collapsed: false, body: [] }; }
@@ -161,8 +174,8 @@
         const out = [];
         walk(state.nodes, (n, depth, num) => {
             if (n.type === 'task' && n.action !== 'goto' && n.action !== 'break' && n.action !== 'continue') {
-                const t = TASK_TYPE_MAP[n.action];
-                out.push({ id: n.id, label: 'Step ' + num + ' — ' + (t ? t.verb : n.action) + (n.target ? ' ' + n.target.slice(0, 20) : '') });
+                const verb = getVerb(n);
+                out.push({ id: n.id, label: 'Step ' + num + ' — ' + verb + (n.target ? ' ' + n.target.slice(0, 20) : '') });
             }
         });
         return out;
@@ -186,7 +199,7 @@
     const STORAGE_KEY = 'prompt_generator_state_v5';
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
     const THEME_KEY = 'prompt_generator_theme';
-    const SCHEMA = 3;
+    const SCHEMA = 2;
 
     function defaultState() {
         return {
@@ -196,8 +209,6 @@
             agentic: false, subagent: false, verbose: false, strict: false,
             contextProject: '', contextTech: '', contextConstraints: '', contextOutput: '',
             variables: [],
-            files: [],
-            selectedFileId: null,
             outputMode: 'pseudocode',
             nodes: [ makeTask('clone'), makeTask('analyze') ],
         };
@@ -232,14 +243,29 @@
             const saved = JSON.parse(raw);
             if (saved.schema === SCHEMA && Array.isArray(saved.nodes)) {
                 state = Object.assign(defaultState(), saved);
-                // Ensure files array exists for older v5 states without files
-                if (!state.files) state.files = [];
-                if (state.selectedFileId === undefined) state.selectedFileId = null;
+                migrateOldActions(state.nodes);  // one-time patch for old file/folder action types
             } else {
                 const legacy = localStorage.getItem('prompt_generator_state_v4') || localStorage.getItem('prompt_generator_state_v3');
                 migrate(saved.tasks ? saved : (legacy ? JSON.parse(legacy) : saved));
+                migrateOldActions(state.nodes);
             }
         } catch (e) { state = defaultState(); }
+    }
+
+    // Migrate legacy action values (create_file → create + targetType:file, etc.)
+    const OLD_ACTION_MAP = { create_file: 'file', update_file: 'file', delete_file: 'file', rename_file: 'file', create_folder: 'folder' };
+    function migrateOldActions(nodes) {
+        if (!nodes) return;
+        let changed = false;
+        nodes.forEach(n => {
+            if (n.type === 'task' && OLD_ACTION_MAP[n.action]) {
+                n.targetType = OLD_ACTION_MAP[n.action];
+                n.action = n.action.replace(/_file|_folder/, '');
+                changed = true;
+            }
+            if (isContainer(n)) slotsOf(n).forEach(s => migrateOldActions(s.arr));
+        });
+        if (changed) saveState();
     }
 
     // Migration from the old flat string-body model  [3.5]
@@ -288,6 +314,16 @@
     function escapeHtml(str) { const d = document.createElement('div'); d.textContent = str == null ? '' : str; return d.innerHTML; }
     function attr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
 
+    // Resolve the full verb for a task node (e.g. "CREATE FILE", "CREATE FOLDER")
+    function getVerb(node) {
+        const t = TASK_TYPE_MAP[node.action];
+        if (!t) return node.action;
+        if (HAS_TARGET_TYPE[node.action]) {
+            return t.verb + ' ' + (node.targetType || 'file').toUpperCase();
+        }
+        return t.verb;
+    }
+
     // ──────────────────────────────────────
     // Output generation  [#1, #7, B17]
     // ──────────────────────────────────────
@@ -317,14 +353,6 @@
         let out = 'ROLE: ' + h.role + (h.caps.length ? '  [' + h.caps.join(', ') + ']' : '') + '\n';
         if (h.vars.length) out += 'VARS: ' + h.vars.map(v => v.name + '=' + (v.value || '?')).join('; ') + '\n';
         if (h.ctx.length) out += 'CONTEXT: ' + h.ctx.join('; ') + '\n';
-        // Files section
-        const allFiles = (state.files || []).filter(f => f.type === 'file');
-        if (allFiles.length) {
-            out += 'FILES: ' + allFiles.map(f => {
-                const path = getFilePath(f);
-                return path + (f.content ? (' (' + f.content.split('\n').length + ' lines)') : '');
-            }).join('; ') + '\n';
-        }
         out += '\nSTEPS\n';
         if (!state.nodes.length) out += '  (no steps)\n';
         else state.nodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
@@ -340,7 +368,8 @@
                 return ind + num + '. GOTO ' + ref + '\n';
             }
             if (n.action === 'break' || n.action === 'continue') return ind + num + '. ' + t.verb + '\n';
-            let line = ind + num + '. ' + t.verb + (n.target ? ' ' + n.target : ' <target?>');
+            const verb = getVerb(n);
+            let line = ind + num + '. ' + verb + (n.target ? ' ' + n.target : ' <target?>');
             if (n.details && n.details.trim()) line += '  // ' + n.details.trim().replace(/\n+/g, '; ');
             return line + '\n';
         }
@@ -398,17 +427,6 @@
         if (state.strict)   md += '- **strict** — follow instructions exactly.\n';
         if (h.vars.length) { md += '\n## Variables\n'; h.vars.forEach(v => md += '- `' + v.name + '` = ' + (v.value || '_(unset)_') + '\n'); }
         if (h.ctx.length)  { md += '\n## Context & Constraints\n'; h.ctx.forEach(c => md += '- ' + c.replace('=', ': ') + '\n'); }
-        // Files section in Markdown
-        const mdFiles = (state.files || []).filter(f => f.type === 'file');
-        if (mdFiles.length) {
-            md += '\n## Project Files\n';
-            mdFiles.forEach(f => {
-                const path = getFilePath(f);
-                md += '- **`' + path + '`**';
-                if (f.content) md += ' (' + f.content.split('\n').length + ' lines)';
-                md += '\n';
-            });
-        }
         md += '\n## Tasks\nPerform the following in order:\n\n';
         if (!state.nodes.length) md += '_(no tasks defined)_\n';
         else state.nodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
@@ -421,7 +439,8 @@
             const t = TASK_TYPE_MAP[n.action] || { verb: n.action };
             if (n.action === 'goto') return ind + '- **' + num + '. GOTO** Step ' + (stepNumberOf(n.gotoRef) || '?') + '\n';
             if (NO_TARGET[n.action]) return ind + '- **' + num + '. ' + t.verb + '**\n';
-            let s = ind + '- **' + num + '. ' + t.verb + '**: `' + (n.target || '(not specified)') + '`\n';
+            const verb = getVerb(n);
+            let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target || '(not specified)') + '`\n';
             if (n.details && n.details.trim()) n.details.split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
             return s;
         }
@@ -493,12 +512,12 @@
             .replace(/^(# .+)$/gm, '<span class="md-h1">$1</span>')
             .replace(/^(## .+)$/gm, '<span class="md-h2">$1</span>')
             .replace(/^(### .+)$/gm, '<span class="md-h3">$1</span>')
-            .replace(/^(ROLE:|VARS:|CONTEXT:|FILES:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
+            .replace(/^(ROLE:|VARS:|CONTEXT:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
             .replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">**$1**</span>')
             .replace(/`([^`]+?)`/g, '<span class="md-code">`$1`</span>')
             .replace(/(\/\/[^\n]*)$/gm, '<span class="md-comment">$1</span>')
             .replace(/&lt;([a-z?]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
-            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR)\b/g, '<span class="md-keyword">$1</span>');
+            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER)\b/g, '<span class="md-keyword">$1</span>');
     }
 
     // ──────────────────────────────────────
@@ -560,10 +579,18 @@
 
     function taskFields(node) {
         const t = TASK_TYPE_MAP[node.action] || { ph: '' };
+        const tt = node.targetType || 'file';
+        const ph = HAS_TARGET_TYPE[node.action] ? (TARGET_TYPE_PH[node.action][tt] || t.ph) : t.ph;
         let html = '<div class="task-top-row">' +
             '<select class="task-type-select" data-field="action" aria-label="Task type">' +
                 TASK_TYPES.map(o => '<option value="' + o.value + '"' + (node.action === o.value ? ' selected' : '') + '>' + o.label + '</option>').join('') +
             '</select>';
+        if (HAS_TARGET_TYPE[node.action]) {
+            html += '<div class="target-type-toggle" role="group" aria-label="Target type">' +
+                '<button class="target-type-opt' + (tt === 'file' ? ' active' : '') + '" data-action="targetType" data-type="file">📄 File</button>' +
+                '<button class="target-type-opt' + (tt === 'folder' ? ' active' : '') + '" data-action="targetType" data-type="folder">📁 Folder</button>' +
+            '</div>';
+        }
         if (node.action === 'goto') {
             const steps = collectReferencableSteps().filter(s => s.id !== node.id);
             html += '<select class="task-goto-select" data-field="gotoRef" aria-label="Target step">' +
@@ -572,7 +599,7 @@
                 '</select>';
             if (node.gotoRef && !steps.some(s => s.id === node.gotoRef)) html += '<span class="ref-warn">⚠ deleted</span>';
         } else if (!NO_TARGET[node.action]) {
-            html += '<input type="text" class="task-param-input" data-field="target" value="' + attr(node.target) + '" placeholder="' + attr(t.ph) + '">';
+            html += '<input type="text" class="task-param-input" data-field="target" value="' + attr(node.target) + '" placeholder="' + attr(ph) + '">';
         } else {
             html += '<span class="task-noparam">no parameters</span>';
         }
@@ -833,6 +860,7 @@
         else if (action === 'removeElseIf') { if (f) { f.node.elseifs.splice(+btn.dataset.elseif, 1); pushHistory(); renderTasks(); saveState(); } }
         else if (action === 'removeAgent')  { if (f && f.node.agents.length > 1) { f.node.agents.splice(+btn.dataset.agent, 1); pushHistory(); renderTasks(); saveState(); } }
         else if (action === 'removeBranch') { if (f && f.node.branches.length > 2) { f.node.branches.splice(+btn.dataset.branch, 1); pushHistory(); renderTasks(); saveState(); } }
+        else if (action === 'targetType') { if (f) { f.node.targetType = btn.dataset.type; pushHistory(); renderTasks(); saveState(); } }
     });
 
     // ──────────────────────────────────────
@@ -946,255 +974,6 @@
     });
 
     // ──────────────────────────────────────
-    // Files & Folders  [CRUD: Create, Read, Update, Delete, Rename]
-    // ──────────────────────────────────────
-    const fileTree = document.getElementById('fileTree');
-    const fileEditor = document.getElementById('fileEditor');
-    const fileEditorName = document.getElementById('fileEditorName');
-    const fileEditorContent = document.getElementById('fileEditorContent');
-    const btnCloseEditor = document.getElementById('btnCloseEditor');
-    const btnAddFile = document.getElementById('btnAddFile');
-    const btnAddFolder = document.getElementById('btnAddFolder');
-
-    // --- File node factories ---
-    function makeFileNode(name, parentId) {
-        return { id: uid('fl'), type: 'file', name: name || 'untitled.js', content: '', parentId: parentId || null, collapsed: false };
-    }
-    function makeFolderNode(name, parentId) {
-        return { id: uid('fd'), type: 'folder', name: name || 'new-folder', parentId: parentId || null, collapsed: false };
-    }
-
-    // --- File tree helpers ---
-    function getChildFiles(parentId) {
-        return (state.files || []).filter(f => f.parentId === parentId);
-    }
-    function getRootFiles() {
-        return getChildFiles(null);
-    }
-    function findFileNode(id) {
-        return (state.files || []).find(f => f.id === id) || null;
-    }
-    function isFolder(node) {
-        return node && node.type === 'folder';
-    }
-    function getFilePath(node) {
-        const parts = [];
-        let current = node;
-        while (current) {
-            parts.unshift(current.name);
-            current = findFileNode(current.parentId);
-        }
-        return parts.join('/');
-    }
-    function getAllDescendants(parentId) {
-        const result = [];
-        const children = getChildFiles(parentId);
-        children.forEach(child => {
-            result.push(child);
-            if (isFolder(child)) {
-                result.push(...getAllDescendants(child.id));
-            }
-        });
-        return result;
-    }
-    function getFileIcon(node) {
-        if (isFolder(node)) return node.collapsed ? '📁' : '📂';
-        const ext = (node.name || '').split('.').pop().toLowerCase();
-        const iconMap = { js: '📜', ts: '📘', jsx: '⚛️', tsx: '⚛️', py: '🐍', html: '🌐', css: '🎨', json: '📋', md: '📝', yml: '⚙️', yaml: '⚙️', sh: '🖥️', sql: '🗃️', env: '🔒', txt: '📄', gitignore: '🙈' };
-        return iconMap[ext] || '📄';
-    }
-
-    // --- Render file tree ---
-    function renderFileTree() {
-        fileTree.innerHTML = '';
-        const roots = getRootFiles();
-        if (!roots.length) {
-            fileTree.innerHTML = '<div class="file-tree-empty">No files yet. Add a file or folder above.</div>';
-            return;
-        }
-        renderFileLevel(roots, fileTree, 0);
-    }
-    function renderFileLevel(items, container, depth) {
-        // Sort: folders first, then files, alphabetically within each group
-        const sorted = [...items].sort((a, b) => {
-            if (isFolder(a) && !isFolder(b)) return -1;
-            if (!isFolder(a) && isFolder(b)) return 1;
-            return a.name.localeCompare(b.name);
-        });
-        sorted.forEach(node => {
-            const row = document.createElement('div');
-            row.className = 'file-item' + (state.selectedFileId === node.id ? ' selected' : '');
-            row.dataset.fileId = node.id;
-            row.style.paddingLeft = (10 + depth * 24) + 'px';
-
-            let html = '';
-            if (isFolder(node)) {
-                html += '<span class="folder-toggle' + (node.collapsed ? ' collapsed' : '') + '" data-action="toggleFolder">▾</span>';
-            } else {
-                html += '<span style="width:14px;flex-shrink:0;"></span>';
-            }
-            html += '<span class="file-item-icon">' + getFileIcon(node) + '</span>';
-            html += '<span class="file-item-name" data-action="selectFile">' + escapeHtml(node.name) + '</span>';
-            html += '<div class="file-item-actions">';
-            html += '<button class="btn-icon" data-action="renameFile" title="Rename" aria-label="Rename">✏️</button>';
-            if (isFolder(node)) {
-                html += '<button class="btn-icon" data-action="addFileToFolder" title="Add file to folder" aria-label="Add file to folder">📄</button>';
-                html += '<button class="btn-icon" data-action="addFolderToFolder" title="Add subfolder" aria-label="Add subfolder">📁</button>';
-            }
-            html += '<button class="btn-icon btn-remove" data-action="deleteFile" title="Delete" aria-label="Delete">✕</button>';
-            html += '</div>';
-
-            row.innerHTML = html;
-            container.appendChild(row);
-
-            // Render children if folder and not collapsed
-            if (isFolder(node) && !node.collapsed) {
-                const children = getChildFiles(node.id);
-                if (children.length) {
-                    renderFileLevel(children, container, depth + 1);
-                }
-            }
-        });
-    }
-
-    // --- File CRUD operations ---
-    function createFile(parentId) {
-        const node = makeFileNode('untitled.js', parentId);
-        state.files.push(node);
-        pushHistory(); renderFileTree(); saveState(); updatePreview();
-        // Auto-rename
-        startRename(node.id);
-    }
-    function createFolder(parentId) {
-        const node = makeFolderNode('new-folder', parentId);
-        state.files.push(node);
-        pushHistory(); renderFileTree(); saveState(); updatePreview();
-        // Auto-rename
-        startRename(node.id);
-    }
-    function deleteFileNode(id) {
-        const node = findFileNode(id);
-        if (!node) return;
-        const msg = isFolder(node)
-            ? 'Delete folder "' + node.name + '" and all its contents?'
-            : 'Delete "' + node.name + '"?';
-        if (!confirm(msg)) return;
-
-        // Collect self + all descendants
-        const toRemove = [id];
-        if (isFolder(node)) {
-            toRemove.push(...getAllDescendants(id).map(d => d.id));
-        }
-        state.files = state.files.filter(f => !toRemove.includes(f.id));
-        if (toRemove.includes(state.selectedFileId)) {
-            state.selectedFileId = null;
-            hideFileEditor();
-        }
-        pushHistory(); renderFileTree(); saveState(); updatePreview();
-        showToast('Deleted');
-    }
-    function startRename(id) {
-        const row = fileTree.querySelector('.file-item[data-file-id="' + id + '"]');
-        if (!row) return;
-        const nameSpan = row.querySelector('.file-item-name');
-        if (!nameSpan) return;
-        const node = findFileNode(id);
-        if (!node) return;
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'file-item-name-input';
-        input.value = node.name;
-        nameSpan.replaceWith(input);
-        input.focus();
-        // Select name without extension
-        const dotIdx = node.name.lastIndexOf('.');
-        if (dotIdx > 0 && !isFolder(node)) input.setSelectionRange(0, dotIdx);
-        else input.select();
-
-        function finishRename() {
-            const newName = input.value.trim();
-            if (newName && newName !== node.name) {
-                node.name = newName;
-                pushHistory();
-                showToast('Renamed');
-            }
-            renderFileTree(); saveState(); updatePreview();
-            // Update editor if renaming the selected file
-            if (state.selectedFileId === id && !isFolder(node)) {
-                fileEditorName.textContent = getFilePath(node);
-            }
-        }
-        input.addEventListener('blur', finishRename);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-            if (e.key === 'Escape') { input.value = node.name; input.blur(); }
-        });
-    }
-    function selectFile(id) {
-        const node = findFileNode(id);
-        if (!node || isFolder(node)) return;
-        state.selectedFileId = id;
-        renderFileTree();
-        showFileEditor(node);
-    }
-    function showFileEditor(node) {
-        fileEditor.style.display = '';
-        fileEditorName.textContent = getFilePath(node);
-        fileEditorContent.value = node.content || '';
-    }
-    function hideFileEditor() {
-        fileEditor.style.display = 'none';
-        fileEditorContent.value = '';
-        fileEditorName.textContent = '';
-    }
-    function toggleFolder(id) {
-        const node = findFileNode(id);
-        if (!node || !isFolder(node)) return;
-        node.collapsed = !node.collapsed;
-        renderFileTree(); saveState();
-    }
-
-    // --- File tree event delegation ---
-    fileTree.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const row = btn.closest('.file-item');
-        if (!row) return;
-        const id = row.dataset.fileId;
-        const action = btn.dataset.action;
-
-        if (action === 'toggleFolder') toggleFolder(id);
-        else if (action === 'selectFile') selectFile(id);
-        else if (action === 'renameFile') startRename(id);
-        else if (action === 'deleteFile') deleteFileNode(id);
-        else if (action === 'addFileToFolder') createFile(id);
-        else if (action === 'addFolderToFolder') createFolder(id);
-    });
-    // Double-click to rename
-    fileTree.addEventListener('dblclick', (e) => {
-        const nameSpan = e.target.closest('.file-item-name');
-        if (!nameSpan) return;
-        const row = nameSpan.closest('.file-item');
-        if (!row) return;
-        startRename(row.dataset.fileId);
-    });
-
-    // --- File editor events ---
-    fileEditorContent.addEventListener('input', () => {
-        if (!state.selectedFileId) return;
-        const node = findFileNode(state.selectedFileId);
-        if (node) { node.content = fileEditorContent.value; saveState(); updatePreview(); }
-    });
-    btnCloseEditor.addEventListener('click', () => {
-        state.selectedFileId = null;
-        hideFileEditor();
-        renderFileTree();
-    });
-    btnAddFile.addEventListener('click', () => createFile(null));
-    btnAddFolder.addEventListener('click', () => createFolder(null));
-
-    // ──────────────────────────────────────
     // Top-level listeners
     // ──────────────────────────────────────
     roleSelect.addEventListener('change', () => {
@@ -1234,12 +1013,6 @@
         contextOutput.value = state.contextOutput || '';
         modeToggle.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.outputMode));
         renderVariables();
-        renderFileTree();
-        if (state.selectedFileId) {
-            const selNode = findFileNode(state.selectedFileId);
-            if (selNode && !isFolder(selNode)) showFileEditor(selNode);
-            else hideFileEditor();
-        } else { hideFileEditor(); }
         renderTasks();
     }
 

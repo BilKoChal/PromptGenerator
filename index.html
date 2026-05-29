@@ -111,25 +111,6 @@
                 <button class="btn btn-add-var" id="btnAddVar"><span class="plus-icon">+</span> Add Variable</button>
             </div>
 
-            <!-- Files & Folders -->
-            <div class="card" id="filesCard">
-                <div class="card-header"><span class="section-icon icon-files">📁</span> Files &amp; Folders
-                    <span class="card-hint">Manage project files referenced in prompts</span></div>
-                <div class="files-toolbar">
-                    <button class="btn btn-add-file" id="btnAddFile" title="New file"><span class="plus-icon">+</span> File</button>
-                    <button class="btn btn-add-folder" id="btnAddFolder" title="New folder"><span class="plus-icon">+</span> Folder</button>
-                </div>
-                <div class="file-tree" id="fileTree"></div>
-                <!-- File Editor (shown when a file is selected) -->
-                <div class="file-editor" id="fileEditor" style="display:none;">
-                    <div class="file-editor-header">
-                        <span class="file-editor-name" id="fileEditorName"></span>
-                        <button class="btn-icon" id="btnCloseEditor" title="Close editor" aria-label="Close editor">✕</button>
-                    </div>
-                    <textarea class="file-editor-textarea" id="fileEditorContent" placeholder="File content…" rows="8"></textarea>
-                </div>
-            </div>
-
             <!-- Tasks -->
             <div class="card" id="tasksCard">
                 <div class="card-header"><span class="section-icon icon-tasks">📋</span> Steps

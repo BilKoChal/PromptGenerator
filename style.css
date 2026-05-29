@@ -165,47 +165,6 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .btn-add-var { background: #0ea5e9; color: #fff; border: none; padding: 8px 16px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .btn-add-var:hover { filter: brightness(1.08); }
 
-/* ─── Files & Folders ─── */
-.icon-files { background: #fff7ed; }
-.files-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
-.btn-add-file { background: #f59e0b; color: #fff; border: none; padding: 8px 14px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; }
-.btn-add-file:hover { filter: brightness(1.08); }
-.btn-add-folder { background: #8b5cf6; color: #fff; border: none; padding: 8px 14px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; }
-.btn-add-folder:hover { filter: brightness(1.08); }
-
-.file-tree { display: flex; flex-direction: column; gap: 2px; min-height: 40px; }
-.file-tree-empty { color: var(--text-secondary); font-size: 0.85rem; text-align: center; padding: 16px; border: 2px dashed var(--border); border-radius: var(--radius-sm); }
-
-.file-item {
-    display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: var(--radius-sm);
-    cursor: pointer; transition: all var(--transition); border: 1px solid transparent; position: relative;
-}
-.file-item:hover { background: var(--hover-bg); border-color: var(--border); }
-.file-item.selected { background: var(--primary-light); border-color: var(--primary); }
-.file-item-icon { font-size: 1rem; flex-shrink: 0; width: 20px; text-align: center; }
-.file-item-name { flex: 1; font-size: 0.88rem; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-item-name-input { flex: 1; font-size: 0.88rem; font-weight: 500; padding: 2px 6px; border: 1.5px solid var(--primary); border-radius: 4px; background: var(--card-bg); color: var(--text); outline: none; min-width: 0; }
-.file-item-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--transition); }
-.file-item:hover .file-item-actions { opacity: 1; }
-.file-item .btn-icon { width: 24px; height: 24px; border-radius: 5px; border: none; background: transparent; cursor: pointer; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
-.file-item .btn-icon:hover { background: var(--hover-bg); color: var(--text); }
-.file-item .btn-icon.btn-remove:hover { background: var(--danger-light); color: var(--danger); }
-
-.file-indent { padding-left: 24px; }
-.folder-children { display: flex; flex-direction: column; gap: 2px; }
-.folder-children.collapsed { display: none; }
-.folder-toggle { font-size: 0.65rem; cursor: pointer; width: 14px; text-align: center; flex-shrink: 0; color: var(--text-secondary); transition: transform var(--transition); }
-.folder-toggle.collapsed { transform: rotate(-90deg); }
-
-/* ─── File Editor ─── */
-.file-editor { margin-top: 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-.file-editor-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--hover-bg); border-bottom: 1px solid var(--border); }
-.file-editor-name { font-size: 0.85rem; font-weight: 700; font-family: var(--font-mono); color: var(--primary); }
-.file-editor .btn-icon { width: 26px; height: 26px; border-radius: 5px; border: none; background: transparent; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
-.file-editor .btn-icon:hover { background: var(--danger-light); color: var(--danger); }
-.file-editor-textarea { width: 100%; border: none; border-radius: 0; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.6; background: var(--input-bg); color: var(--text); resize: vertical; min-height: 120px; max-height: 400px; outline: none; }
-.file-editor-textarea:focus { box-shadow: none; border-color: transparent; background: var(--input-bg); }
-
 /* ─── Task list / add buttons ─── */
 .task-list { display: flex; flex-direction: column; gap: 10px; min-height: 40px; border-radius: var(--radius); transition: background var(--transition); }
 .task-list.dz-over { background: var(--primary-light); }
@@ -266,6 +225,12 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .exec-toggle { display: inline-flex; border: 1.5px solid var(--sub-border); border-radius: 8px; overflow: hidden; }
 .exec-opt { background: var(--card-bg); border: none; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; cursor: pointer; color: var(--text-secondary); }
 .exec-opt.active { background: var(--sub-color); color: #fff; }
+
+/* target type toggle (File / Folder) */
+.target-type-toggle { display: inline-flex; border: 1.5px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.target-type-opt { background: var(--card-bg); border: none; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; cursor: pointer; color: var(--text-secondary); transition: all var(--transition); }
+.target-type-opt.active { background: var(--primary); color: #fff; }
+.target-type-opt:hover:not(.active) { background: var(--hover-bg); }
 
 /* ─── Nested slots & drop zones ─── */
 .slots-wrap { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -342,6 +307,4 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
     .task-type-select, .task-param-input, .task-goto-select { width: 100%; min-width: auto; }
     .add-buttons { flex-direction: column; }
     .add-buttons .btn { flex: none; }
-    .files-toolbar { flex-direction: column; }
-    .file-item-actions { opacity: 1; }
 }
