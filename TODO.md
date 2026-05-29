@@ -319,16 +319,16 @@
 
 ### 5.4 Starter Templates / Presets
 
-- [✅] **R6 — Ship 4 built-in workflow templates**
+- [✅] **R6 — Ship 4 built-in workflow templates (with full-state JSON)**
   - **What:** No starter templates exist. Users start from scratch every time. The plan calls for 3–4 built-in trees loadable from the sidebar (e.g., "Bug Triage", "Code Review", "Migration", "Full Project Setup").
   - **Action completed:**
-    1. ✅ Designed 4 template trees as JSON state objects:
+    1. ✅ Designed 4 template trees as full-state JSON objects (including role, context, variables, resources, nodes):
        - **Bug Triage:** Role=QA Tester, steps=CLONE → ANALYZE → IF reproducible → DEBUG → IMPLEMENT → TEST → GATE → DEPLOY, ELSE → DOCUMENT
        - **Code Review:** Role=Code Reviewer, steps=CLONE → ANALYZE → FOR EACH file in PR → REVIEW → IF issues → DOCUMENT → GATE → DOCUMENT summary
        - **Migration:** Role=DevOps Engineer, phases=Research & Planning (SECTION) → GATE → Implementation & Testing (SECTION with LOOP max 3 cycles, IF tests pass) → DEPLOY
-       - **Full Project Setup:** Role=Senior Software Engineer, 3 phases (Phase 0 with sub-agents Architect+Security, Phase 1 with feature loop, Phase 2 with sub-agents Reviewer+QA), variables ($project, $repo), gates
+       - **Full Project Setup:** Role=Senior Software Engineer, 3 phases with richer sub-agents (domain, rationale, outputFile, isPrimary), RULES block, PACKAGE node, variables ($project, $repo), gates
     2. ✅ Added a "Templates" section to the sidebar (above saved workflows)
-    3. ✅ Clicking a template loads it as current state (with confirmation dialog if unsaved changes)
+    3. ✅ Clicking a template loads the FULL state (role, context, variables, resources, nodes) — not just the steps tree
     4. ✅ Templates are hardcoded (not in localStorage) so they're always available
     5. ✅ Added `buildTemplateState()`, `BUILTIN_TEMPLATES[]`, `renderTemplateList()`, `loadTemplate()` functions
     6. ✅ Templates get fresh unique IDs via `reId()` on load (safe to modify without ID conflicts)
@@ -336,8 +336,14 @@
     8. ✅ Keyboard accessible (tabindex, Enter/Space key handlers, aria-label)
     9. ✅ Added CSS styling for template items (name, description, role badge, hover effects)
     10. ✅ Added sidebar section title and visual divider between templates and saved workflows
+    11. ✅ **Full-state template save/load:** Templates now save/restore entire state (role, context, variables, resources, nodes, output mode, verbosity, etc.) using `Object.assign(defaultState(), ...)`
+    12. ✅ **Templates as separate JSON files:** Created `/templates/` folder with individual JSON files:
+        - `bug-triage.json`, `code-review.json`, `migration.json`, `full-project-setup.json`
+        - Each file contains `name`, `desc`, and full `state` object — same format as the save-section export
+    13. ✅ **Template export/import:** Added "💾 Export Template" and "📥 Import Template" buttons in the sidebar for saving/loading template JSON files
+    14. ✅ **User templates in localStorage:** Added `TEMPLATES_KEY` for user-created templates that persist between sessions
   - **Priority:** MEDIUM — significantly improves first-use experience
-  - **Files:** `script.js` (template data + sidebar section + load logic), `index.html` (templates container), `style.css` (template item styling)
+  - **Files:** `script.js` (template data + sidebar section + load logic + export/import), `index.html` (templates container + buttons), `style.css` (template item styling), `templates/*.json`
 
 ---
 
@@ -404,32 +410,19 @@
 
 ### 7.1 ASK Node (Questionnaire)
 
-- [❌] **P3 / §13.3 — Add `ask` node type**
+- [✅] **P3 / §13.3 — Add `ask` node type**
   - **What:** A node that instructs the agent to ask the user clarifying questions. Supports free-text and multiple-choice questions, optional "Other" and "Suggest default" flags. Optionally branches based on the answer.
-  - **Action required:**
-    1. **Factory:**
-       ```js
-       { id, type:'ask', oneMessage:true,
-         questions: [
-           { id, text:'', kind:'choice', options:[], allowOther:true, suggestDefault:false, saveTo:'' }
-         ],
-         branches: [] // optional: one child-array per question option (like IF's elseifs)
-       }
-       ```
-    2. **Render:** Card with:
-       - Toggle: "Ask all in one message" (default on)
-       - List of questions, each with:
-         - Text input: the question
-         - Kind select: Free text / Multiple choice
-         - If choice: editable option list with + / ✕ buttons
-         - Checkboxes: "Allow 'Other'" and "Suggest best practice"
-         - `saveTo` input: variable name to store the answer (ties to `${var}` interpolation)
-       - Optional branching UI (if enabled: one slot per option)
-    3. **Pseudo-code (Compact):** `N. ASK USER: <questions>`
-    4. **Pseudo-code (Explicit):** `ASK THE USER the following question(s) in a SINGLE message and WAIT for their answer:` then enumerated questions with options
-    5. **Markdown:** Formatted question list with options as bullet points
-    6. **Add `ask` to `CONTAINER_TYPES` if branching is enabled, otherwise it's a leaf**
-    7. **Add "❓ Ask" button to the add-buttons bar**
+  - **Action completed:**
+    1. ✅ **Factory:** `makeAsk()` with `questions[]` (text, kind, options, allowOther, suggestDefault, saveTo) and `branches[]`
+    2. ✅ **Added `ask` to `CONTAINER_TYPES`** — ask is always a container (branches array)
+    3. ✅ **Card rendering:** `askHead()` with full question editing UI — text inputs, kind select, option list with +/✕, checkboxes, saveTo input, branching toggle
+    4. ✅ **Pseudo-code output:** Both compact and explicit modes with enumerated questions, options, branching
+    5. ✅ **Markdown output:** Formatted question list with options
+    6. ✅ **Validation:** Empty questions flagged in `collectIssues()`
+    7. ✅ **Event handling:** Full input/change/click handling for all question fields
+    8. ✅ **CSS:** Purple accent (`--ask-color: #8b5cf6`), question rows with left border, option list styling
+    9. ✅ **Added "❓ Ask" button** to the add-buttons bar and inline add bars
+    10. ✅ **SCHEMA bumped to 4** with migration for new node types
   - **Priority:** MEDIUM — important for interactive agent prompts
   - **Files:** `script.js`, `index.html`, `style.css`
 
@@ -453,63 +446,47 @@
 
 ### 7.3 PACKAGE Node (Deliverable)
 
-- [❌] **P5 (partial) / §13.6 — Add `package` node type**
+- [✅] **P5 (partial) / §13.6 — Add `package` node type**
   - **What:** A node that declares a deliverable archive (zip) with an exact folder tree structure. The agent must bundle all produced files into this archive.
-  - **Action required:**
-    1. **Factory:** `{ id, type:'package', archiveName:'project_${var}.zip', tree:'', filesNote:'', collapsed:false }`
-    2. **Render:** Card with:
-       - Archive name input (supports `${var}`)
-       - Multiline monospace textarea for the folder tree layout (e.g., `docs/plan/research/`, `src/`)
-       - Optional note field
-    3. **Pseudo-code (Compact):** `N. PACKAGE → <archiveName> { <tree> }`
-    4. **Pseudo-code (Explicit):** `Collect the files listed below and bundle them into a single archive named "<archiveName>", reproducing EXACTLY this folder structure:` then fenced code block with the tree
-    5. **Markdown:** Formatted tree in a code block with archive name as heading
-    6. **Add to `makeNode()`, `cardBody()`, `pseudoNode()`, `mdNode()`**
-    7. **Add "📦 Package" button to the add-buttons bar**
+  - **Action completed:**
+    1. ✅ **Factory:** `makePackage()` with `archiveName`, `tree`, `filesNote`, `collapsed`
+    2. ✅ **Leaf node:** Not in `CONTAINER_TYPES`; leaf-only like gate
+    3. ✅ **Card rendering:** `packageHead()` with archive name input (supports `${var}`), monospace tree textarea, note field
+    4. ✅ **Pseudo-code output:** Both compact (`PACKAGE → name { tree }`) and explicit modes
+    5. ✅ **Markdown output:** Formatted tree in a code block
+    6. ✅ **Validation:** Empty archiveName flagged in `collectIssues()`
+    7. ✅ **CSS:** Orange accent (`--pkg-color: #ea580c`), monospace tree textarea
+    8. ✅ **Added "📦 Package" button** to the add-buttons bar and inline add bars
   - **Priority:** MEDIUM — needed for deliverable-oriented prompts
   - **Files:** `script.js`, `index.html`, `style.css`
 
 ### 7.4 Richer Sub-Agent Specifications
 
-- [❌] **P7 / §13.8 — Extend agent object with domain, rationale, outputFile, isPrimary**
+- [✅] **P7 / §13.8 — Extend agent object with domain, rationale, outputFile, isPrimary**
   - **What:** Currently each sub-agent only has `role`, `task`, and `agentic` flag. Real agent prompts need more: research domain, why this agent matters, output filename pattern, and whether it's the primary/architect agent.
-  - **Action required:**
-    1. **Extend `makeAgent()`:**
-       ```js
-       { id, role:'', task:'', agentic:true, verbose:false,
-         domain:'',           // e.g., "Security analysis"
-         rationale:'',        // e.g., "Ensures OWASP top-10 coverage"
-         outputFile:'',       // e.g., "${project}_${role}_report.md"
-         isPrimary:false,     // marks the lead/architect agent
-         children:[] }
-       ```
-    2. **Update `buildSlots()` subagent case** to show new fields:
-       - Domain input (optional)
-       - Rationale input (optional)
-       - Output file pattern input (optional, supports `${var}`)
-       - Primary agent checkbox (only one can be primary)
-    3. **Update pseudo-code output** to include domain and rationale:
-       - Compact: `- agent "<role>" → <task>`
-       - Explicit: `- Agent "<role>" (domain: <domain>): <task>. Rationale: <rationale>. Write report to: <outputFile>.`
-    4. **Update markdown output similarly**
-    5. **Bump SCHEMA to 4** and migrate old agent objects (fill new fields with defaults)
+  - **Action completed:**
+    1. ✅ **Extended `makeAgent()`** with `domain`, `rationale`, `outputFile`, `isPrimary` fields
+    2. ✅ **Updated `buildSlots()` subagent case** to show new fields: domain input, rationale input, output file pattern input, primary agent checkbox
+    3. ✅ **Primary enforcement:** When `isPrimary` is checked, all other agents in the same subagent are unchecked
+    4. ✅ **Updated pseudo-code output** to include domain, rationale, outputFile, isPrimary in both compact and explicit modes
+    5. ✅ **Updated markdown output** similarly
+    6. ✅ **SCHEMA bumped to 4** with `migrateSchema4()` that adds new fields to old agents
   - **Priority:** MEDIUM — significantly improves sub-agent prompt quality
   - **Files:** `script.js`, `style.css`
 
 ### 7.5 RULES Block (Conventions / Constraints)
 
-- [❌] **P8 / §13.7 — Add `rules` task action or container**
+- [✅] **P8 / §13.7 — Add `rules` task action**
   - **What:** A titled list of free-text rules/conventions that the agent must follow (e.g., "Filenames hyphen-separated", "Conventional Commits, ≤100 chars", "OGF.md never edited"). Emitted verbatim as a `RULES:` block.
-  - **Action required:**
-    1. **Add to `TASK_TYPES`:**
-       ```js
-       { value:'rules', label:'📜 Rules / Conventions', verb:'RULES', ph: 'Naming conventions, commit format…' }
-       ```
-    2. **Add `rulesList` field to task node** (multiline textarea, only shown for `rules` action): one rule per line
-    3. **Pseudo-code (Compact):** `N. RULES:\n  - rule1\n  - rule2`
-    4. **Pseudo-code (Explicit):** `RULES — The following conventions are mandatory and must be followed without exception:\n  1. rule1\n  2. rule2`
-    5. **Markdown:** `**N. RULES:**` then numbered list of rules
-    6. **Update `taskFields()`** to show rulesList textarea when action is `rules`
+  - **Action completed:**
+    1. ✅ **Added `rules` to `TASK_TYPES`:** `{ value:'rules', label:'📜 Rules / Conventions', verb:'RULES', ph: 'Naming conventions, commit format…' }`
+    2. ✅ **Added `rulesList` field** to `makeTask()` — multiline textarea shown when action is `rules`
+    3. ✅ **Added `rules` to `NO_TARGET` set** (no target field for rules)
+    4. ✅ **Pseudo-code (Compact):** `N. RULES:` then bullet list of rules
+    5. ✅ **Pseudo-code (Explicit):** `N. RULES — The following conventions are mandatory and must be followed without exception:` then numbered list
+    6. ✅ **Markdown:** `**N. RULES:**` then numbered list of rules
+    7. ✅ **Added `RULES` keyword** to `highlight()` regex
+    8. ✅ **SCHEMA bumped to 4** with `migrateSchema4()` that adds `rulesList` to old tasks
   - **Priority:** MEDIUM — needed for output-contract prompts
   - **Files:** `script.js`
 
@@ -634,11 +611,11 @@
 | 🟠 P1 | Section GOTO targetability (verify) | 6 | Small | ✅ |
 | 🟡 P2 | R6 — Starter templates | 5 | Medium | ✅ |
 | 🟡 P2 | R4 — break/continue validation UX | 5 | Small | 🔶 |
-| 🟡 P2 | ASK node (questionnaire) | 7 | Large | ❌ |
+| 🟡 P2 | ASK node (questionnaire) | 7 | Large | ✅ |
 | 🟡 P2 | PRODUCE FILE task sub-type | 7 | Small | ❌ |
-| 🟡 P2 | PACKAGE node (deliverable) | 7 | Medium | ❌ |
-| 🟡 P2 | Richer sub-agent specs | 7 | Medium | ❌ |
-| 🟡 P2 | RULES block | 7 | Small | ❌ |
+| 🟡 P2 | PACKAGE node (deliverable) | 7 | Medium | ✅ |
+| 🟡 P2 | Richer sub-agent specs | 7 | Medium | ✅ |
+| 🟡 P2 | RULES block | 7 | Small | ✅ |
 | 🟢 P3 | Memory directive | 7 | Small | ❌ |
 | 🟢 P3 | Additional task sub-types (PLAN, LOG, etc.) | 7 | Medium | ❌ |
 | 🟢 P3 | MODE + FLAG support | 8 | Large | ❌ |

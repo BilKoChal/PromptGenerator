@@ -1,0 +1,37 @@
+{
+  "name": "Bug Triage",
+  "desc": "Reproduce, debug, and fix a reported bug with regression tests",
+  "state": {
+    "schema": 4,
+    "roleSelectValue": "QA Tester (automated testing, edge cases, regression suites)",
+    "customRole": "",
+    "agentic": true,
+    "subagent": false,
+    "verbose": false,
+    "strict": true,
+    "contextProject": "",
+    "contextTech": "",
+    "contextConstraints": "",
+    "contextOutput": "step_by_step",
+    "variables": [
+      { "name": "repo", "value": "" },
+      { "name": "bugDescription", "value": "" }
+    ],
+    "resources": [],
+    "outputMode": "pseudocode",
+    "verbosity": "explicit",
+    "nodes": [
+      { "id": "t_01", "type": "task", "action": "clone", "target": "${repo}", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "" },
+      { "id": "t_02", "type": "task", "action": "analyze", "target": "the reported bug and related code", "details": "Identify the affected module, function, and code paths. Use ${bugDescription} as the starting point.", "gotoRef": "", "targetType": "file", "rulesList": "" },
+      { "id": "if_01", "type": "if", "condition": "bug is reproducible", "collapsed": false, "then": [
+        { "id": "t_03", "type": "task", "action": "debug", "target": "root cause of the bug", "details": "Trace the execution path, identify the exact line/logic causing the issue", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "t_04", "type": "task", "action": "implement", "target": "fix for the bug", "details": "Apply a minimal, targeted fix — do not refactor unrelated code", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "t_05", "type": "task", "action": "test", "target": "the fix and edge cases", "details": "Verify the bug is fixed; test related paths to prevent regression", "gotoRef": "", "targetType": "file", "rulesList": "" }
+      ], "elseifs": [], "else": [
+        { "id": "t_06", "type": "task", "action": "document", "target": "the bug as non-reproducible", "details": "Record steps attempted, environment details, and reasons it could not be reproduced", "gotoRef": "", "targetType": "file", "rulesList": "" }
+      ]},
+      { "id": "gt_01", "type": "gate", "prompt": "Bug fix verified — ready to deploy?", "onReject": "Continue debugging or request more information" },
+      { "id": "t_07", "type": "task", "action": "deploy", "target": "staging for final validation", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "" }
+    ]
+  }
+}

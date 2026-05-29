@@ -1,0 +1,55 @@
+{
+  "name": "Full Project Setup",
+  "desc": "Multi-phase project with sub-agents: plan, build, review, and deliver",
+  "state": {
+    "schema": 4,
+    "roleSelectValue": "Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)",
+    "customRole": "",
+    "agentic": true,
+    "subagent": true,
+    "verbose": false,
+    "strict": true,
+    "contextProject": "",
+    "contextTech": "React, Node.js, PostgreSQL",
+    "contextConstraints": "",
+    "contextOutput": "",
+    "variables": [
+      { "name": "project", "value": "" },
+      { "name": "repo", "value": "" }
+    ],
+    "resources": [],
+    "outputMode": "pseudocode",
+    "verbosity": "explicit",
+    "nodes": [
+      { "id": "sec_01", "type": "section", "title": "Phase 0 — Requirements & Architecture", "goalNote": "Gather requirements and produce an architecture document", "exitCriteria": "Architecture document approved", "collapsed": false, "children": [
+        { "id": "t_01", "type": "task", "action": "clone", "target": "${repo}", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "t_02", "type": "task", "action": "analyze", "target": "existing codebase structure and patterns", "details": "Understand the current project layout, conventions, and technical debt", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "sa_01", "type": "subagent", "execMode": "parallel", "collapsed": false, "agents": [
+          { "id": "ag_01", "role": "Architect", "task": "Design the system architecture and data model", "agentic": true, "verbose": false, "domain": "System Design", "rationale": "Ensures consistent architecture decisions", "outputFile": "${project}_architecture.md", "isPrimary": true, "children": [] },
+          { "id": "ag_02", "role": "Security Analyst", "task": "Identify security requirements and threat model", "agentic": true, "verbose": false, "domain": "Security", "rationale": "Ensures OWASP top-10 coverage", "outputFile": "${project}_security_report.md", "isPrimary": false, "children": [] }
+        ]},
+        { "id": "t_03", "type": "task", "action": "document", "target": "architecture document at docs/${project}_architecture.md", "details": "Include: ER diagram, API contract, folder structure, and tech decisions with rationale", "gotoRef": "", "targetType": "file", "rulesList": "" }
+      ]},
+      { "id": "gt_01", "type": "gate", "prompt": "Architecture approved — start implementation?", "onReject": "Revise architecture based on feedback" },
+      { "id": "sec_02", "type": "section", "title": "Phase 1 — Implementation", "goalNote": "Build the core features end-to-end", "exitCriteria": "All features implemented and unit-tested", "collapsed": false, "children": [
+        { "id": "t_rules", "type": "task", "action": "rules", "target": "", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "Use camelCase for variables and functions\nAll commits must follow Conventional Commits\nNo any types in TypeScript\nAll public functions must have JSDoc comments\nTest coverage must be above 80%" },
+        { "id": "lp_01", "type": "loop", "loopType": "for_each", "source": "priority-ordered feature list", "itemVar": "feature", "maxIterations": "", "exitCondition": "", "collapsed": false, "body": [
+          { "id": "t_04", "type": "task", "action": "implement", "target": "${feature}", "details": "Follow the architecture document; write clean, well-tested code", "gotoRef": "", "targetType": "file", "rulesList": "" },
+          { "id": "t_05", "type": "task", "action": "test", "target": "${feature} unit and integration tests", "details": "Aim for >80% coverage; test edge cases and error paths", "gotoRef": "", "targetType": "file", "rulesList": "" }
+        ]}
+      ]},
+      { "id": "sec_03", "type": "section", "title": "Phase 2 — Review & Deliver", "goalNote": "Quality assurance and final delivery", "exitCriteria": "All tests pass and code review approved", "collapsed": false, "children": [
+        { "id": "sa_02", "type": "subagent", "execMode": "parallel", "collapsed": false, "agents": [
+          { "id": "ag_03", "role": "Code Reviewer", "task": "Review all code for quality, security, and maintainability", "agentic": true, "verbose": false, "domain": "Code Quality", "rationale": "", "outputFile": "", "isPrimary": false, "children": [] },
+          { "id": "ag_04", "role": "QA Tester", "task": "Run end-to-end tests and verify all acceptance criteria", "agentic": true, "verbose": false, "domain": "Testing", "rationale": "", "outputFile": "", "isPrimary": false, "children": [] }
+        ]},
+        { "id": "if_01", "type": "if", "condition": "all reviews pass and tests green", "collapsed": false, "then": [
+          { "id": "t_06", "type": "task", "action": "deploy", "target": "production", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "" }
+        ], "elseifs": [], "else": [
+          { "id": "t_07", "type": "task", "action": "debug", "target": "review findings and test failures", "details": "Fix all critical issues; re-test and re-review", "gotoRef": "", "targetType": "file", "rulesList": "" }
+        ]},
+        { "id": "pkg_01", "type": "package", "archiveName": "${project}_deliverable.zip", "tree": "${project}/\n├── src/\n│   ├── index.ts\n│   ├── api/\n│   └── utils/\n├── tests/\n├── docs/\n│   └── ${project}_architecture.md\n├── README.md\n└── package.json", "filesNote": "Include all source files, tests, and documentation", "collapsed": false }
+      ]}
+    ]
+  }
+}

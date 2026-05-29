@@ -20,6 +20,8 @@
     --sub-color: #db2777;  --sub-light: #fdf2f8;  --sub-border: #f9a8d4;
     --par-color: #ea580c;  --par-light: #fff7ed;  --par-border: #fdba74;
     --gate-color: #dc2626; --gate-light: #fef2f2; --gate-border: #fca5a5;
+    --ask-color: #8b5cf6;  --ask-light: #f5f3ff;  --ask-border: #c4b5fd;
+    --pkg-color: #ea580c;  --pkg-light: #fff7ed;  --pkg-border: #fdba74;
     --hover-bg: #f0f2f5;
     --input-bg: #fafbfc;
     --code-bg: #1e1e2e;
@@ -46,6 +48,7 @@
     --danger-light: #3a2422;
     --if-light: #2a2440; --loop-light: #16323a; --sub-light: #3a1f30; --par-light: #3a2618;
     --gate-light: #3a1f1f;
+    --ask-light: #2a2440; --pkg-light: #3a2618;
     --sec-light: #11302c;
     --hover-bg: #262a33;
     --input-bg: #23262f;
@@ -209,6 +212,8 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .btn-add-parallel { background: var(--par-color); } .btn-add-parallel:hover { filter: brightness(1.08); }
 .btn-add-section { background: var(--sec-color); } .btn-add-section:hover { filter: brightness(1.08); }
 .btn-add-gate { background: var(--gate-color); } .btn-add-gate:hover { filter: brightness(1.08); }
+.btn-add-ask { background: var(--ask-color); } .btn-add-ask:hover { filter: brightness(1.08); }
+.btn-add-package { background: var(--pkg-color); } .btn-add-package:hover { filter: brightness(1.08); }
 
 /* ─── Task Card ─── */
 .task-card {
@@ -250,11 +255,16 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .card-section .task-number { background: var(--sec-color); }
 .card-gate { border-color: var(--gate-border); background: var(--gate-light); border-left-width: 4px; border-left-color: var(--gate-color); }
 .card-gate .task-number { background: var(--gate-color); }
+.card-ask { border-color: var(--ask-border); background: var(--ask-light); }
+.card-ask .task-number { background: var(--ask-color); }
+.card-package { border-color: var(--pkg-border); background: var(--pkg-light); border-left-width: 4px; border-left-color: var(--pkg-color); }
+.card-package .task-number { background: var(--pkg-color); }
 
 .block-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .label-if { color: var(--if-color); } .label-loop { color: var(--loop-color); }
 .label-subagent { color: var(--sub-color); } .label-parallel { color: var(--par-color); }
 .label-section { color: var(--sec-color); } .label-gate { color: var(--gate-color); }
+.label-ask { color: var(--ask-color); } .label-package { color: var(--pkg-color); }
 .section-title { width: 100%; font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; }
 .section-goal, .section-exit { width: 100%; font-size: 0.82rem; margin-bottom: 4px; }
 .gate-prompt { width: 100%; font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
@@ -335,7 +345,8 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .task-card.depth-1.card-loop,
 .task-card.depth-1.card-subagent,
 .task-card.depth-1.card-parallel,
-.task-card.depth-1.card-section {
+.task-card.depth-1.card-section,
+.task-card.depth-1.card-ask {
     background: color-mix(in srgb, var(--if-light) 20%, var(--card-bg-2));
 }
 
@@ -343,7 +354,8 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .task-card.depth-2.card-loop,
 .task-card.depth-2.card-subagent,
 .task-card.depth-2.card-parallel,
-.task-card.depth-2.card-section {
+.task-card.depth-2.card-section,
+.task-card.depth-2.card-ask {
     background: color-mix(in srgb, var(--loop-light) 20%, var(--card-bg-2));
 }
 
@@ -351,7 +363,8 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .task-card.depth-3.card-loop,
 .task-card.depth-3.card-subagent,
 .task-card.depth-3.card-parallel,
-.task-card.depth-3.card-section {
+.task-card.depth-3.card-section,
+.task-card.depth-3.card-ask {
     background: color-mix(in srgb, var(--if-light) 20%, var(--card-bg-2));
 }
 
@@ -383,10 +396,15 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .branch-then { color: var(--success); } .branch-else { color: var(--danger); }
 .branch-elseif { color: var(--warning); } .branch-loop { color: var(--loop-color); }
 .branch-agent { color: var(--sub-color); } .branch-parallel { color: var(--par-color); }
+.branch-ask { color: var(--ask-color); }
 .slot-head input { flex: 1; padding: 5px 8px; font-size: 0.8rem; }
 .agent-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
 .agent-role { flex: 0 0 40%; font-weight: 600; }
 .agent-task { flex: 1; min-width: 140px; }
+.agent-extra-fields { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.agent-domain { flex: 0 0 45%; font-size: 0.82rem; }
+.agent-rationale { flex: 1; min-width: 140px; font-size: 0.82rem; }
+.agent-output-file { flex: 1; min-width: 140px; font-size: 0.82rem; font-family: var(--font-mono); }
 .mini-chk { font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .agent-steps-label { font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 4px; }
 .drop-zone { display: flex; flex-direction: column; gap: 8px; min-height: 28px; border-radius: var(--radius-sm); padding: 4px; border: 1.5px dashed transparent; transition: all var(--transition); }
@@ -406,6 +424,37 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .btn-outline { background: var(--card-bg); border: 1.5px solid var(--border); color: var(--text); }
 .btn-outline:hover { border-color: var(--border-strong); background: var(--hover-bg); }
 .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* ─── Rules textarea ─── */
+.rules-textarea { font-family: var(--font-mono); font-size: 0.82rem; min-height: 80px; max-height: 250px; }
+
+/* ─── Ask node ─── */
+.ask-one-message { margin-bottom: 8px; }
+.ask-questions { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.ask-question-row { padding: 8px 10px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); border-left: 3px solid var(--ask-color); }
+.ask-q-header { font-size: 0.78rem; font-weight: 700; color: var(--ask-color); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.ask-q-text { width: 100%; font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+.ask-q-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.ask-q-kind { flex: 0 0 auto; min-width: 120px; font-size: 0.82rem; padding: 4px 8px; }
+.ask-q-options { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; padding-left: 12px; }
+.ask-option-row { display: flex; gap: 4px; align-items: center; }
+.ask-option-input { flex: 1; font-size: 0.82rem; padding: 4px 8px; }
+.ask-add-option { background: transparent; border: 1px dashed var(--ask-border); border-radius: 6px; padding: 2px 10px; font-size: 0.72rem; font-weight: 600; color: var(--ask-color); cursor: pointer; margin-left: 12px; margin-top: 2px; }
+.ask-add-option:hover { border-color: var(--ask-color); background: var(--ask-light); }
+.ask-q-saveto { width: 100%; font-size: 0.82rem; font-family: var(--font-mono); margin-top: 4px; }
+.ask-branch-toggle { margin-top: 6px; }
+.ask-branch-block { border-left-color: var(--ask-border); }
+
+/* ─── Package node ─── */
+.pkg-name { width: 100%; font-weight: 600; font-size: 0.9rem; font-family: var(--font-mono); margin-bottom: 4px; }
+.pkg-tree { width: 100%; font-family: var(--font-mono); font-size: 0.82rem; min-height: 80px; max-height: 250px; margin-bottom: 4px; }
+.pkg-note { width: 100%; font-size: 0.82rem; color: var(--text-secondary); }
+
+/* ─── Sidebar Template Actions ─── */
+.template-actions { margin-bottom: 0; }
+.template-actions-row { display: flex; gap: 8px; }
+.template-item-user { border-left-color: var(--success); }
+.template-item-user:hover { border-color: var(--success); }
 .plus-icon { font-size: 1.1rem; line-height: 1; }
 
 /* ─── Preview ─── */

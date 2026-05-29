@@ -38,13 +38,14 @@
         { value: 'update',      label: '✏️ Update',     verb: 'UPDATE',    ph: 'src/api/auth.ts — add refresh token logic' },
         { value: 'delete',      label: '🗑️ Delete',     verb: 'DELETE',    ph: 'src/legacy/old-utils.js' },
         { value: 'rename',      label: '📛 Rename',     verb: 'RENAME',    ph: 'src/old-name.ts → src/new-name.ts' },
+        { value: 'rules',       label: '📜 Rules / Conventions', verb: 'RULES', ph: 'Naming conventions, commit format…' },
         { value: 'goto',        label: '↩️ Go To Step', verb: 'GOTO',      ph: '' },
         { value: 'break',       label: '⛔ Break Loop', verb: 'BREAK',     ph: '' },
         { value: 'continue',    label: '⏭️ Continue',   verb: 'CONTINUE',  ph: '' },
         { value: 'custom_task', label: '💡 Custom',     verb: 'DO',        ph: 'describe what needs to be done…' },
     ];
     const TASK_TYPE_MAP = Object.fromEntries(TASK_TYPES.map(t => [t.value, t]));
-    const NO_TARGET = { goto: 1, break: 1, continue: 1 };
+    const NO_TARGET = { goto: 1, break: 1, continue: 1, rules: 1 };
 
     // Actions that support a File / Folder target-type toggle
     const HAS_TARGET_TYPE = { create: 1, update: 1, delete: 1, rename: 1 };
@@ -61,10 +62,10 @@
         { value: 'repeat',   label: 'Repeat N times' },
     ];
 
-    const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel'];
+    const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel', 'ask'];
     const isContainer = (n) => CONTAINER_TYPES.includes(n.type);
     // Leaf-only types (for reference, validation, etc.)
-    const LEAF_TYPES = ['task', 'gate'];
+    const LEAF_TYPES = ['task', 'gate', 'package'];
 
     // ──────────────────────────────────────
     // IDs (stable, collision-resistant)  [fixes B13]
@@ -80,15 +81,35 @@
     // Node factories
     // ──────────────────────────────────────
     function makeTask(action) {
-        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file' };
+        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '' };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
     function makeLoop()     { return { id: uid('lp'), type: 'loop', loopType: 'for_each', source: '', itemVar: 'item', maxIterations: '', exitCondition: '', collapsed: false, body: [] }; }
     function makeGate()     { return { id: uid('gt'), type: 'gate', prompt: '', onReject: '' }; }
-    function makeAgent()    { return { id: uid('ag'), role: '', task: '', agentic: true, verbose: false, children: [] }; }
+    function makeAgent()    { return { id: uid('ag'), role: '', task: '', agentic: true, verbose: false, domain: '', rationale: '', outputFile: '', isPrimary: false, children: [] }; }
     function makeSubagent() { return { id: uid('sa'), type: 'subagent', execMode: 'parallel', collapsed: false, agents: [makeAgent()] }; }
     function makeParallel() { return { id: uid('pl'), type: 'parallel', collapsed: false, branches: [[], []] }; }
+    function makeAsk() {
+        return {
+            id: uid('ask'), type: 'ask',
+            oneMessage: true,
+            questions: [
+                { id: uid('q'), text: '', kind: 'choice', options: [], allowOther: true, suggestDefault: false, saveTo: '' }
+            ],
+            branches: [],
+            collapsed: false
+        };
+    }
+    function makePackage() {
+        return {
+            id: uid('pkg'), type: 'package',
+            archiveName: 'project_${var}.zip',
+            tree: '',
+            filesNote: '',
+            collapsed: false
+        };
+    }
     function makeNode(kind) {
         if (kind === 'section') return makeSection();
         if (kind === 'if') return makeIf();
@@ -96,6 +117,8 @@
         if (kind === 'subagent') return makeSubagent();
         if (kind === 'parallel') return makeParallel();
         if (kind === 'gate') return makeGate();
+        if (kind === 'ask') return makeAsk();
+        if (kind === 'package') return makePackage();
         return makeTask();
     }
 
@@ -113,6 +136,12 @@
         if (node.type === 'loop')     return [{ key: 'body', label: 'BODY', arr: node.body }];
         if (node.type === 'subagent') return (node.agents || []).map((a, i) => ({ key: 'agent:' + i, label: 'AGENT', arr: a.children }));
         if (node.type === 'parallel') return (node.branches || []).map((b, i) => ({ key: 'branch:' + i, label: 'BRANCH', arr: b }));
+        if (node.type === 'ask') {
+            if ((node.branches || []).length) {
+                return (node.branches || []).map((b, i) => ({ key: 'askbranch:' + i, label: 'OPTION', arr: b }));
+            }
+            return [];
+        }
         return [];
     }
     function getSlotArr(node, slotKey) {
@@ -124,6 +153,7 @@
         if (slotKey.indexOf('elseif:') === 0) { const i = +slotKey.split(':')[1]; return node.elseifs[i] && node.elseifs[i].children; }
         if (slotKey.indexOf('agent:') === 0)  { const i = +slotKey.split(':')[1]; return node.agents[i] && node.agents[i].children; }
         if (slotKey.indexOf('branch:') === 0) { const i = +slotKey.split(':')[1]; return node.branches[i]; }
+        if (slotKey.indexOf('askbranch:') === 0) { const i = +slotKey.split(':')[1]; return node.branches[i]; }
         return null;
     }
 
@@ -188,6 +218,10 @@
                 out.push({ id: n.id, label: 'Phase ' + num + ' — ' + (n.title || 'untitled').slice(0, 24) });
             } else if (n.type === 'gate') {
                 out.push({ id: n.id, label: 'Step ' + num + ' — GATE ' + (n.prompt || 'confirm').slice(0, 20) });
+            } else if (n.type === 'ask') {
+                out.push({ id: n.id, label: 'Step ' + num + ' — ASK ' + ((n.questions && n.questions[0] && n.questions[0].text) || '').slice(0, 20) });
+            } else if (n.type === 'package') {
+                out.push({ id: n.id, label: 'Step ' + num + ' — PACKAGE ' + (n.archiveName || '').slice(0, 20) });
             }
         });
         return out;
@@ -204,13 +238,16 @@
         if (n.type === 'task') { const v = getVerb(n); return (v + (n.target ? ' ' + n.target : '')).slice(0, 40); }
         if (n.type === 'section') return n.title || 'section';
         if (n.type === 'gate') return 'GATE: ' + (n.prompt || 'confirm');
+        if (n.type === 'ask') return 'ASK: ' + ((n.questions && n.questions[0] && n.questions[0].text) || '');
+        if (n.type === 'package') return 'PACKAGE: ' + (n.archiveName || '');
         return n.type;
     }
     function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
     function reId(node) {
-        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type.slice(0, 2));
+        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type === 'package' ? 'pkg' : node.type === 'ask' ? 'ask' : node.type.slice(0, 2));
         slotsOf(node).forEach(s => s.arr.forEach(reId));
         if (node.type === 'subagent') (node.agents || []).forEach(a => { a.id = uid('ag'); });
+        if (node.type === 'ask') (node.questions || []).forEach(q => { q.id = uid('q'); });
         return node;
     }
 
@@ -219,8 +256,9 @@
     // ──────────────────────────────────────
     const STORAGE_KEY = 'prompt_generator_state_v5';
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
+    const TEMPLATES_KEY = 'prompt_generator_templates';
     const THEME_KEY = 'prompt_generator_theme';
-    const SCHEMA = 3;
+    const SCHEMA = 4;
 
     function defaultState() {
         return {
@@ -264,16 +302,18 @@
             const raw = localStorage.getItem(STORAGE_KEY);
             if (!raw) return;
             const saved = JSON.parse(raw);
-            // Any tree-model save (schema 2 or 3) loads by merging onto current defaults,
+            // Any tree-model save (schema 2+) loads by merging onto current defaults,
             // which fills in newly-added fields (resources, verbosity, …).
             if (saved.schema >= 2 && Array.isArray(saved.nodes)) {
                 state = Object.assign(defaultState(), saved);
                 state.schema = SCHEMA;
-                migrateOldActions(state.nodes);  // one-time patch for old file/folder action types
+                migrateOldActions(state.nodes);
+                migrateSchema4(state.nodes);
             } else {
                 const legacy = localStorage.getItem('prompt_generator_state_v4') || localStorage.getItem('prompt_generator_state_v3');
                 migrate(saved.tasks ? saved : (legacy ? JSON.parse(legacy) : saved));
                 migrateOldActions(state.nodes);
+                migrateSchema4(state.nodes);
             }
         } catch (e) { state = defaultState(); }
     }
@@ -292,6 +332,25 @@
             if (isContainer(n)) slotsOf(n).forEach(s => migrateOldActions(s.arr));
         });
         if (changed) saveState();
+    }
+
+    // Schema 4 migration: add new fields to existing nodes/agents
+    function migrateSchema4(nodes) {
+        if (!nodes) return;
+        nodes.forEach(n => {
+            // Task nodes get rulesList
+            if (n.type === 'task' && !('rulesList' in n)) { n.rulesList = ''; }
+            // Sub-agent nodes: add new fields to agents
+            if (n.type === 'subagent' && n.agents) {
+                n.agents.forEach(a => {
+                    if (!('domain' in a)) a.domain = '';
+                    if (!('rationale' in a)) a.rationale = '';
+                    if (!('outputFile' in a)) a.outputFile = '';
+                    if (!('isPrimary' in a)) a.isPrimary = false;
+                });
+            }
+            if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema4(s.arr));
+        });
     }
 
     // Migration from the old flat string-body model  [3.5]
@@ -446,7 +505,6 @@
             const v = r.kind === 'text' ? '(text inlined below)' : (r.value || '<empty>');
             out += '  @' + r.name.trim() + '  [' + r.kind + ']' + (r.note ? ' — ' + r.note : (r.value && r.kind !== 'text' ? ' — ' + r.value : '')) + '\n';
         });
-        // inline full text resources at the top, as the user requested
         const texts = rs.filter(r => r.kind === 'text' && (r.value || '').trim());
         texts.forEach(r => {
             out += '\n--- @' + r.name.trim() + ' ---\n' + r.value.replace(/\n+$/, '') + '\n--- end @' + r.name.trim() + ' ---\n';
@@ -458,6 +516,19 @@
         const ind = pad(depth);
         if (n.type === 'task') {
             const t = TASK_TYPE_MAP[n.action] || { verb: n.action };
+            // Rules action
+            if (n.action === 'rules') {
+                const rules = (n.rulesList || '').split('\n').map(l => l.trim()).filter(Boolean);
+                if (!rules.length) return ind + num + '. RULES: <no rules defined>\n';
+                if (isExplicit()) {
+                    let s = ind + num + '. RULES — The following conventions are mandatory and must be followed without exception:\n';
+                    rules.forEach((r, ri) => { s += ind + '   ' + (ri + 1) + '. ' + interp(r) + '\n'; });
+                    return s;
+                }
+                let s = ind + num + '. RULES:\n';
+                rules.forEach(r => { s += ind + '   - ' + interp(r) + '\n'; });
+                return s;
+            }
             if (n.action === 'goto') {
                 if (!n.gotoRef) return ind + num + '. GOTO <step?>\n';
                 const refNum = stepNumberOf(n.gotoRef) || '?';
@@ -491,6 +562,71 @@
             if (n.onReject && n.onReject.trim()) s += ind + '   If rejected: ' + interp(n.onReject).trim() + '\n';
             return s;
         }
+        if (n.type === 'ask') {
+            const questions = n.questions || [];
+            if (isExplicit()) {
+                let s = ind + num + '. ASK THE USER the following question' + (questions.length > 1 ? 's' : '') +
+                    ' in a ' + (n.oneMessage ? 'SINGLE' : 'separate') + ' message and WAIT for their answer:\n';
+                questions.forEach((q, qi) => {
+                    s += ind + '   Q' + (qi + 1) + ': ' + (q.text ? interp(q.text) : '<question?>') + '\n';
+                    if (q.kind === 'choice' && (q.options || []).length) {
+                        s += ind + '      Options: ' + q.options.map(o => '"' + interp(o) + '"').join(', ');
+                        if (q.allowOther) s += ' (or Other)';
+                        s += '\n';
+                    } else {
+                        s += ind + '      (free text answer)\n';
+                    }
+                    if (q.saveTo && q.saveTo.trim()) s += ind + '      Save answer to: $' + q.saveTo.trim() + '\n';
+                    if (q.suggestDefault) s += ind + '      Suggest best-practice default.\n';
+                });
+                // Branches
+                if ((n.branches || []).length) {
+                    // Find the choice question that drives branching
+                    const choiceQ = questions.find(q => q.kind === 'choice' && (q.options || []).length);
+                    if (choiceQ) {
+                        (n.branches || []).forEach((b, bi) => {
+                            const optLabel = (choiceQ.options && choiceQ.options[bi]) ? choiceQ.options[bi] : 'option ' + (bi + 1);
+                            s += ind + '   IF answer is "' + interp(optLabel) + '":\n';
+                            s += slotPseudo(b, depth + 2, num);
+                        });
+                    }
+                }
+                return s;
+            }
+            // Compact
+            const qSummary = questions.map(q => q.text ? interp(q.text).slice(0, 30) : '?').join('; ');
+            let s = ind + num + '. ASK USER: ' + qSummary + '\n';
+            if ((n.branches || []).length) {
+                const choiceQ = questions.find(q => q.kind === 'choice' && (q.options || []).length);
+                if (choiceQ) {
+                    (n.branches || []).forEach((b, bi) => {
+                        const optLabel = (choiceQ.options && choiceQ.options[bi]) ? choiceQ.options[bi] : 'opt' + (bi + 1);
+                        s += ind + '   IF "' + interp(optLabel) + '":\n';
+                        s += slotPseudo(b, depth + 2, num);
+                    });
+                }
+            }
+            return s;
+        }
+        if (n.type === 'package') {
+            const name = n.archiveName ? interp(n.archiveName) : '<archive name?>';
+            const tree = n.tree ? n.tree.trim() : '';
+            if (isExplicit()) {
+                let s = ind + num + '. PACKAGE — Collect the files listed below and bundle them into a single archive named "' + name + '", reproducing EXACTLY this folder structure:\n';
+                if (tree) {
+                    s += ind + '```\n';
+                    tree.split('\n').forEach(l => { s += ind + '   ' + l + '\n'; });
+                    s += ind + '```\n';
+                } else {
+                    s += ind + '   <no tree structure defined>\n';
+                }
+                if (n.filesNote && n.filesNote.trim()) s += ind + '   Note: ' + interp(n.filesNote).trim() + '\n';
+                return s;
+            }
+            // Compact
+            let s = ind + num + '. PACKAGE → ' + name + ' { ' + (tree ? tree.split('\n')[0].slice(0, 30) + (tree.split('\n').length > 1 ? '…' : '') : '<empty>') + ' }\n';
+            return s;
+        }
         if (n.type === 'if') {
             let s = ind + num + '. IF ' + (n.condition ? interp(n.condition) : '<condition?>') + ':\n';
             s += slotPseudo(n.then, depth + 1, num);
@@ -506,7 +642,6 @@
             if (n.loopType === 'while') head = 'WHILE ' + (n.source ? interp(n.source) : '<condition?>');
             else if (n.loopType === 'repeat') head = 'REPEAT ' + (n.source ? interp(n.source) : '<n?>') + ' TIMES';
             else head = 'FOR EACH ' + (n.itemVar || 'item') + ' IN ' + (n.source ? interp(n.source) : '<collection?>');
-            // maxIterations / exitCondition (P9)
             const maxIter = n.maxIterations && n.maxIterations.trim();
             const exitCond = n.exitCondition && n.exitCondition.trim();
             if (isExplicit()) {
@@ -517,7 +652,6 @@
                 s += slotPseudo(n.body, depth + 1, num);
                 return s;
             }
-            // Compact mode
             let s = ind + num + '. ' + head;
             if (maxIter && exitCond) s += ' (until ' + interp(exitCond) + ', max ' + interp(maxIter) + ')';
             else if (maxIter) s += ' (max ' + interp(maxIter) + ')';
@@ -537,9 +671,16 @@
                 s = ind + num + '. SPAWN sub-agents [' + mode.toUpperCase() + ']:\n';
             }
             (n.agents || []).forEach((a, ai) => {
-                s += ind + '   - agent "' + (a.role ? interp(a.role) : 'unnamed') + '"' +
-                     (a.task ? ' → ' + interp(a.task) : '') +
-                     (a.agentic ? ' (agentic)' : '') + '\n';
+                let agentLine = ind + '   - Agent "' + (a.role ? interp(a.role) : 'unnamed') + '"';
+                if (a.domain && a.domain.trim()) agentLine += ' (domain: ' + interp(a.domain).trim() + ')';
+                agentLine += (a.task ? ' → ' + interp(a.task) : '');
+                if (a.agentic) agentLine += ' (agentic)';
+                if (a.isPrimary) agentLine += ' [PRIMARY]';
+                s += agentLine + '\n';
+                if (isExplicit()) {
+                    if (a.rationale && a.rationale.trim()) s += ind + '     Rationale: ' + interp(a.rationale).trim() + '\n';
+                    if (a.outputFile && a.outputFile.trim()) s += ind + '     Write report to: ' + interp(a.outputFile).trim() + '\n';
+                }
                 if (a.children && a.children.length) s += slotPseudo(a.children, depth + 2, num + '.' + (ai + 1));
             });
             return s;
@@ -608,6 +749,13 @@
         const ind = '  '.repeat(depth);
         if (n.type === 'task') {
             const t = TASK_TYPE_MAP[n.action] || { verb: n.action };
+            if (n.action === 'rules') {
+                const rules = (n.rulesList || '').split('\n').map(l => l.trim()).filter(Boolean);
+                let s = ind + '- **' + num + '. RULES:**\n';
+                rules.forEach((r, ri) => { s += ind + '  ' + (ri + 1) + '. ' + interp(r) + '\n'; });
+                if (!rules.length) s += ind + '  - _(no rules defined)_\n';
+                return s;
+            }
             if (n.action === 'goto') return ind + '- **' + num + '. GOTO** Step ' + (stepNumberOf(n.gotoRef) || '?') + '\n';
             if (NO_TARGET[n.action]) return ind + '- **' + num + '. ' + t.verb + '**\n';
             const verb = getVerb(n);
@@ -619,6 +767,41 @@
             const prompt = n.prompt ? interp(n.prompt) : '(not specified)';
             let s = ind + '- **' + num + '. GATE:** ' + prompt + '\n';
             if (n.onReject && n.onReject.trim()) s += ind + '  - _If rejected:_ ' + interp(n.onReject).trim() + '\n';
+            return s;
+        }
+        if (n.type === 'ask') {
+            const questions = n.questions || [];
+            let s = ind + '- **' + num + '. ASK USER**' + (n.oneMessage ? ' (all in one message)' : '') + ':\n';
+            questions.forEach((q, qi) => {
+                s += ind + '  - Q' + (qi + 1) + ': ' + (q.text ? interp(q.text) : '_(not specified)_') + '\n';
+                if (q.kind === 'choice' && (q.options || []).length) {
+                    s += ind + '    Options: ' + q.options.map(o => '`' + interp(o) + '`').join(', ');
+                    if (q.allowOther) s += ' (or Other)';
+                    s += '\n';
+                }
+                if (q.saveTo && q.saveTo.trim()) s += ind + '    → Save to: `$' + q.saveTo.trim() + '`\n';
+            });
+            if ((n.branches || []).length) {
+                const choiceQ = questions.find(q => q.kind === 'choice' && (q.options || []).length);
+                if (choiceQ) {
+                    (n.branches || []).forEach((b, bi) => {
+                        const optLabel = (choiceQ.options && choiceQ.options[bi]) ? choiceQ.options[bi] : 'option ' + (bi + 1);
+                        s += ind + '  - IF "' + interp(optLabel) + '":\n';
+                        s += slotMd(b, depth + 2, num);
+                    });
+                }
+            }
+            return s;
+        }
+        if (n.type === 'package') {
+            const name = n.archiveName ? interp(n.archiveName) : '_(not specified)_';
+            let s = ind + '- **' + num + '. PACKAGE:** `' + name + '`\n';
+            if (n.tree && n.tree.trim()) {
+                s += ind + '  ```\n';
+                n.tree.trim().split('\n').forEach(l => { s += ind + '  ' + l + '\n'; });
+                s += ind + '  ```\n';
+            }
+            if (n.filesNote && n.filesNote.trim()) s += ind + '  - _Note:_ ' + interp(n.filesNote).trim() + '\n';
             return s;
         }
         if (n.type === 'section') {
@@ -640,7 +823,6 @@
             let head = n.loopType === 'while' ? 'WHILE `' + (n.source ? interp(n.source) : '?') + '`'
                 : n.loopType === 'repeat' ? 'REPEAT `' + (n.source ? interp(n.source) : '?') + '` TIMES'
                 : 'FOR EACH `' + (n.itemVar || 'item') + '` IN `' + (n.source ? interp(n.source) : '?') + '`';
-            // maxIterations / exitCondition (P9)
             const maxIter = n.maxIterations && n.maxIterations.trim();
             const exitCond = n.exitCondition && n.exitCondition.trim();
             if (maxIter && exitCond) head += ' (until ' + interp(exitCond) + ', max ' + interp(maxIter) + ')';
@@ -651,7 +833,13 @@
         if (n.type === 'subagent') {
             let s = ind + '- **' + num + '. SPAWN sub-agents** [' + (n.execMode || 'parallel') + ']:\n';
             (n.agents || []).forEach((a, ai) => {
-                s += ind + '  - **' + (a.role ? interp(a.role) : 'agent') + '**' + (a.task ? ' — ' + interp(a.task) : '') + '\n';
+                let agentLine = ind + '  - **' + (a.role ? interp(a.role) : 'agent') + '**';
+                if (a.domain && a.domain.trim()) agentLine += ' _(' + interp(a.domain).trim() + ')_';
+                agentLine += (a.task ? ' — ' + interp(a.task) : '');
+                if (a.isPrimary) agentLine += ' ⭐';
+                s += agentLine + '\n';
+                if (a.rationale && a.rationale.trim()) s += ind + '    - Rationale: ' + interp(a.rationale).trim() + '\n';
+                if (a.outputFile && a.outputFile.trim()) s += ind + '    - Report: `' + interp(a.outputFile).trim() + '`\n';
                 if (a.children && a.children.length) s += slotMd(a.children, depth + 2, num + '.' + (ai + 1));
             });
             return s;
@@ -689,11 +877,18 @@
                 if (n.type === 'task') {
                     if (n.action === 'goto' && !n.gotoRef) { missing++; badIds[n.id] = 1; }
                     else if ((n.action === 'break' || n.action === 'continue') && !inLoop) { missing++; badIds[n.id] = 1; }
+                    else if (n.action === 'rules' && !(n.rulesList || '').trim()) { missing++; badIds[n.id] = 1; }
                     else if (!NO_TARGET[n.action] && !(n.target || '').trim()) { missing++; badIds[n.id] = 1; }
                 }
                 if (n.type === 'gate' && !(n.prompt || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (n.type === 'if' && !(n.condition || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (n.type === 'loop' && !(n.source || '').trim()) { missing++; badIds[n.id] = 1; }
+                if (n.type === 'ask') {
+                    const questions = n.questions || [];
+                    const hasEmptyQ = questions.some(q => !(q.text || '').trim());
+                    if (hasEmptyQ || !questions.length) { missing++; badIds[n.id] = 1; }
+                }
+                if (n.type === 'package' && !(n.archiveName || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (isContainer(n)) {
                     const childInLoop = inLoop || n.type === 'loop';
                     slotsOf(n).forEach(s => rec(s.arr, childInLoop));
@@ -738,7 +933,7 @@
             .replace(/\$\{[A-Za-z0-9_]+(?::UNDEFINED)?\}/g, '<span class="md-var">$&</span>')
             .replace(/(^|[^A-Za-z0-9_@])@([A-Za-z0-9_]+(?::UNDEFINED)?)/g, '$1<span class="md-resource">@$2</span>')
             .replace(/&lt;([a-zA-Z?: ]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
-            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm)\b/g, '<span class="md-keyword">$1</span>');
+            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm|ASK|PACKAGE|RULES|PRODUCE FILE)\b/g, '<span class="md-keyword">$1</span>');
     }
 
     // ──────────────────────────────────────
@@ -748,7 +943,7 @@
         taskList.innerHTML = '';
         if (!state.nodes.length) {
             taskList.classList.add('empty-list');
-            taskList.innerHTML = '<p>No steps yet. Add a Task, If/Else, Loop, Sub-Agent, or Parallel block.</p>';
+            taskList.innerHTML = '<p>No steps yet. Add a Task, If/Else, Loop, Sub-Agent, Parallel, Ask, or Package block.</p>';
         } else {
             taskList.classList.remove('empty-list');
             renderInto(state.nodes, taskList, 0);
@@ -760,7 +955,11 @@
             container.appendChild(buildCard(node, depth, i + 1, arr));
         });
     }
-    function numberFor(node) { return stepNumberOf(node.id) || '•'; }
+    function numberFor(node) {
+        let result = '?';
+        walk(state.nodes, (n, d, num) => { if (n.id === node.id) result = num; });
+        return result;
+    }
 
     function buildCard(node, depth, localIndex, parentArr) {
         const card = document.createElement('div');
@@ -769,7 +968,9 @@
             (node.type === 'section' ? ' card-section' :
              node.type === 'if' ? ' card-if' : node.type === 'loop' ? ' card-loop' :
              node.type === 'subagent' ? ' card-subagent' : node.type === 'parallel' ? ' card-parallel' :
-             node.type === 'gate' ? ' card-gate' : '');
+             node.type === 'gate' ? ' card-gate' :
+             node.type === 'ask' ? ' card-ask' :
+             node.type === 'package' ? ' card-package' : '');
 
         card.innerHTML =
             '<span class="task-number">' + numberFor(node) + '</span>' +
@@ -799,6 +1000,8 @@
         if (node.type === 'loop')     return loopHead(node);
         if (node.type === 'subagent') return subagentHead(node);
         if (node.type === 'parallel') return '<div class="block-label label-parallel">⇉ Parallel block (branches run concurrently)</div>';
+        if (node.type === 'ask')      return askHead(node);
+        if (node.type === 'package')  return packageHead(node);
         return '';
     }
 
@@ -836,13 +1039,18 @@
                 steps.map(s => '<option value="' + s.id + '"' + (node.gotoRef === s.id ? ' selected' : '') + '>' + escapeHtml(s.label) + '</option>').join('') +
                 '</select>';
             if (node.gotoRef && !steps.some(s => s.id === node.gotoRef)) html += '<span class="ref-warn">⚠ deleted</span>';
+        } else if (node.action === 'rules') {
+            html += '<span class="task-noparam">rules / conventions</span>';
         } else if (!NO_TARGET[node.action]) {
             html += '<input type="text" class="task-param-input" data-field="target" value="' + attr(node.target) + '" placeholder="' + attr(ph) + '">';
         } else {
             html += '<span class="task-noparam">no parameters</span>';
         }
         html += '</div>';
-        if (!NO_TARGET[node.action]) {
+        // Rules textarea
+        if (node.action === 'rules') {
+            html += '<textarea class="task-details-input rules-textarea" data-field="rulesList" placeholder="Rules (one per line), e.g.:&#10;Use camelCase for variables&#10;All commits must follow Conventional Commits&#10;No any types in TypeScript" rows="4">' + escapeHtml(node.rulesList || '') + '</textarea>';
+        } else if (!NO_TARGET[node.action]) {
             html += '<textarea class="task-details-input" data-field="details" placeholder="Notes / acceptance criteria (optional)" rows="2">' + escapeHtml(node.details) + '</textarea>';
         }
         return html;
@@ -873,6 +1081,57 @@
                 '<button class="exec-opt' + (node.execMode === 'sequential' ? ' active' : '') + '" data-action="execMode" data-mode="sequential">▸ Sequential</button>' +
                 '<button class="exec-opt' + (node.execMode === 'parallel' ? ' active' : '') + '" data-action="execMode" data-mode="parallel">⇉ Parallel</button>' +
             '</div></div>';
+    }
+
+    function askHead(node) {
+        let html = '<div class="block-label label-ask">❓ Ask User (Questionnaire)</div>' +
+            '<label class="mini-chk ask-one-message"><input type="checkbox" data-field="oneMessage"' + (node.oneMessage ? ' checked' : '') + '> Ask all in one message</label>';
+        // Questions
+        html += '<div class="ask-questions">';
+        (node.questions || []).forEach((q, qi) => {
+            html += '<div class="ask-question-row" data-qindex="' + qi + '">' +
+                '<div class="ask-q-header">Q' + (qi + 1) +
+                (node.questions.length > 1 ? '<button class="btn-icon btn-remove" data-action="removeQuestion" data-qindex="' + qi + '" title="Remove question" aria-label="Remove question">✕</button>' : '') +
+                '</div>' +
+                '<input type="text" class="ask-q-text" data-field="q_text" data-qindex="' + qi + '" value="' + attr(q.text) + '" placeholder="Your question…">' +
+                '<div class="ask-q-meta">' +
+                    '<select class="ask-q-kind" data-field="q_kind" data-qindex="' + qi + '" aria-label="Question kind">' +
+                        '<option value="choice"' + (q.kind === 'choice' ? ' selected' : '') + '>Multiple choice</option>' +
+                        '<option value="free"' + (q.kind === 'free' ? ' selected' : '') + '>Free text</option>' +
+                    '</select>' +
+                    '<label class="mini-chk"><input type="checkbox" data-field="q_allowOther" data-qindex="' + qi + '"' + (q.allowOther ? ' checked' : '') + '> Allow "Other"</label>' +
+                    '<label class="mini-chk"><input type="checkbox" data-field="q_suggestDefault" data-qindex="' + qi + '"' + (q.suggestDefault ? ' checked' : '') + '> Suggest best practice</label>' +
+                '</div>';
+            // Options (for choice type)
+            if (q.kind === 'choice') {
+                html += '<div class="ask-q-options">';
+                (q.options || []).forEach((opt, oi) => {
+                    html += '<div class="ask-option-row">' +
+                        '<input type="text" class="ask-option-input" data-field="q_option" data-qindex="' + qi + '" data-oindex="' + oi + '" value="' + attr(opt) + '" placeholder="Option ' + (oi + 1) + '">' +
+                        '<button class="btn-icon btn-remove" data-action="removeOption" data-qindex="' + qi + '" data-oindex="' + oi + '" title="Remove option" aria-label="Remove option">✕</button>' +
+                        '</div>';
+                });
+                html += '<button class="slot-add ask-add-option" data-action="addOption" data-qindex="' + qi + '">+ Add option</button>';
+                html += '</div>';
+            }
+            html += '<input type="text" class="ask-q-saveto" data-field="q_saveTo" data-qindex="' + qi + '" value="' + attr(q.saveTo) + '" placeholder="Save answer to variable (optional, e.g. userChoice)">';
+            html += '</div>';
+        });
+        html += '</div>';
+        html += '<button class="slot-add" data-action="addQuestion">+ Add question</button>';
+        // Branching toggle
+        const hasBranches = (node.branches || []).length > 0;
+        html += '<div class="ask-branch-toggle">' +
+            '<label class="mini-chk"><input type="checkbox" data-field="toggleBranches"' + (hasBranches ? ' checked' : '') + '> Enable branching by answer</label>' +
+        '</div>';
+        return html;
+    }
+
+    function packageHead(node) {
+        return '<div class="block-label label-package">📦 Package (Deliverable Archive)</div>' +
+            '<input type="text" class="pkg-name" data-field="archiveName" value="' + attr(node.archiveName) + '" placeholder="Archive name, e.g. project_${var}.zip">' +
+            '<textarea class="pkg-tree" data-field="tree" placeholder="Folder tree layout, e.g.:&#10;project/&#10;├── src/&#10;│   ├── index.ts&#10;│   └── utils.ts&#10;├── tests/&#10;└── README.md" rows="6">' + escapeHtml(node.tree || '') + '</textarea>' +
+            '<input type="text" class="pkg-note" data-field="filesNote" value="' + attr(node.filesNote) + '" placeholder="Note about files (optional)">';
     }
 
     // ──────────────────────────────────────
@@ -918,6 +1177,12 @@
                         '<input type="text" class="agent-task" data-agent="' + i + '" data-field="task" value="' + attr(a.task) + '" placeholder="One-line objective">' +
                         '<label class="mini-chk"><input type="checkbox" data-agent="' + i + '" data-field="agentic"' + (a.agentic ? ' checked' : '') + '> agentic</label>' +
                     '</div>' +
+                    '<div class="agent-extra-fields">' +
+                        '<input type="text" class="agent-domain" data-agent="' + i + '" data-field="domain" value="' + attr(a.domain || '') + '" placeholder="Domain (optional, e.g. Security analysis)">' +
+                        '<input type="text" class="agent-rationale" data-agent="' + i + '" data-field="rationale" value="' + attr(a.rationale || '') + '" placeholder="Rationale (optional, e.g. Ensures OWASP coverage)">' +
+                        '<input type="text" class="agent-output-file" data-agent="' + i + '" data-field="outputFile" value="' + attr(a.outputFile || '') + '" placeholder="Output file (optional, e.g. ${project}_${role}_report.md)">' +
+                        '<label class="mini-chk"><input type="checkbox" data-agent="' + i + '" data-field="isPrimary"' + (a.isPrimary ? ' checked' : '') + '> ⭐ Primary agent</label>' +
+                    '</div>' +
                     '<div class="agent-steps-label">Agent steps (optional):</div>';
                 block.appendChild(dropZone(node, 'agent:' + i, a.children, depth));
                 wrap.appendChild(block);
@@ -941,6 +1206,22 @@
             addBranch.className = 'slot-add'; addBranch.dataset.action = 'addBranch';
             addBranch.textContent = '+ Add branch';
             wrap.appendChild(addBranch);
+        }
+        else if (node.type === 'ask') {
+            if ((node.branches || []).length) {
+                const choiceQ = (node.questions || []).find(q => q.kind === 'choice' && (q.options || []).length);
+                if (choiceQ) {
+                    (node.branches || []).forEach((b, bi) => {
+                        const optLabel = (choiceQ.options && choiceQ.options[bi]) ? choiceQ.options[bi] : 'option ' + (bi + 1);
+                        const block = document.createElement('div');
+                        block.className = 'slot-block ask-branch-block';
+                        block.innerHTML = '<div class="slot-head branch-ask">IF "' + escapeHtml(optLabel) + '"' +
+                            '<button class="btn-icon btn-remove" data-action="removeAskBranch" data-askbranch="' + bi + '" title="Remove branch" aria-label="Remove branch">✕</button></div>';
+                        block.appendChild(dropZone(node, 'askbranch:' + bi, b, depth));
+                        wrap.appendChild(block);
+                    });
+                }
+            }
         }
         contentEl.appendChild(wrap);
     }
@@ -978,7 +1259,9 @@
             '<button data-add="if">+ If</button>' +
             '<button data-add="loop">+ Loop</button>' +
             '<button data-add="subagent">+ Sub-Agent</button>' +
-            '<button data-add="parallel">+ Parallel</button>';
+            '<button data-add="parallel">+ Parallel</button>' +
+            '<button data-add="ask">+ Ask</button>' +
+            '<button data-add="package">+ Package</button>';
         dz.appendChild(bar);
         return dz;
     }
@@ -1038,11 +1321,70 @@
         const field = e.target.dataset.field;
         const agentIdx = e.target.dataset.agent;
         const elseifIdx = e.target.dataset.elseif;
+        const qIdx = e.target.dataset.qindex;
+
+        // Ask node question fields
+        if (qIdx !== undefined && field) {
+            const f = findNode(id);
+            if (!f || !f.node.questions || !f.node.questions[qIdx]) return;
+            const q = f.node.questions[qIdx];
+            if (field === 'q_text') { q.text = e.target.value; updatePreview(); saveState(); return; }
+            if (field === 'q_kind') { q.kind = e.target.value; pushHistory(); renderTasks(); return; }
+            if (field === 'q_allowOther') { q.allowOther = e.target.checked; updatePreview(); saveState(); return; }
+            if (field === 'q_suggestDefault') { q.suggestDefault = e.target.checked; updatePreview(); saveState(); return; }
+            if (field === 'q_saveTo') { q.saveTo = e.target.value; updatePreview(); saveState(); return; }
+            if (field === 'q_option') {
+                const oIdx = e.target.dataset.oindex;
+                if (oIdx !== undefined) { q.options[oIdx] = e.target.value; updatePreview(); saveState(); return; }
+            }
+            return;
+        }
+
+        // Ask node oneMessage checkbox
+        if (field === 'oneMessage') {
+            const f = findNode(id);
+            if (f) { f.node.oneMessage = e.target.checked; updatePreview(); saveState(); }
+            return;
+        }
+
+        // Ask node branching toggle
+        if (field === 'toggleBranches') {
+            const f = findNode(id);
+            if (f) {
+                if (e.target.checked) {
+                    // Initialize branches from first choice question's options
+                    const choiceQ = (f.node.questions || []).find(q => q.kind === 'choice' && (q.options || []).length);
+                    if (choiceQ) {
+                        f.node.branches = choiceQ.options.map(() => []);
+                    } else {
+                        f.node.branches = [[]];
+                    }
+                } else {
+                    f.node.branches = [];
+                }
+                pushHistory(); renderTasks(); saveState();
+            }
+            return;
+        }
 
         if (agentIdx !== undefined && field) {
             const f = findNode(id);
             if (f && f.node.agents[agentIdx]) {
-                f.node.agents[agentIdx][field] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+                const a = f.node.agents[agentIdx];
+                if (e.target.type === 'checkbox') {
+                    if (field === 'isPrimary') {
+                        a.isPrimary = e.target.checked;
+                        // Enforce only one primary
+                        if (a.isPrimary) {
+                            f.node.agents.forEach((ag, idx) => { if (idx !== +agentIdx) ag.isPrimary = false; });
+                        }
+                        pushHistory(); renderTasks();
+                    } else {
+                        a[field] = e.target.checked;
+                    }
+                } else {
+                    a[field] = e.target.value;
+                }
                 updatePreview(); saveState();
             }
             return;
@@ -1060,10 +1402,21 @@
         const id = card.dataset.nodeId;
         const field = e.target.dataset.field;
         const agentIdx = e.target.dataset.agent;
+        const qIdx = e.target.dataset.qindex;
 
         if (agentIdx !== undefined && field === 'agentic') {
             const f = findNode(id);
             if (f && f.node.agents[agentIdx]) { f.node.agents[agentIdx].agentic = e.target.checked; updatePreview(); saveState(); }
+            return;
+        }
+        if (agentIdx !== undefined && field === 'isPrimary') {
+            // handled in input handler above
+            return;
+        }
+        // Ask kind change needs re-render
+        if (qIdx !== undefined && field === 'q_kind') {
+            const f = findNode(id);
+            if (f && f.node.questions[qIdx]) { f.node.questions[qIdx].kind = e.target.value; pushHistory(); renderTasks(); saveState(); }
             return;
         }
         // type/loopType/goto changes require re-render (fields differ)  [#5]
@@ -1086,7 +1439,24 @@
             if (slotAdd.dataset.action === 'addElseIf') { f.node.elseifs.push({ condition: '', children: [] }); pushHistory(); renderTasks(); }
             if (slotAdd.dataset.action === 'addAgent')  { f.node.agents.push(makeAgent()); pushHistory(); renderTasks(); }
             if (slotAdd.dataset.action === 'addBranch') { f.node.branches.push([]); pushHistory(); renderTasks(); }
+            if (slotAdd.dataset.action === 'addQuestion') {
+                f.node.questions.push({ id: uid('q'), text: '', kind: 'choice', options: [], allowOther: true, suggestDefault: false, saveTo: '' });
+                pushHistory(); renderTasks();
+            }
+            if (slotAdd.dataset.action === 'addOption') {
+                const qi = +slotAdd.dataset.qindex;
+                if (f.node.questions[qi]) { f.node.questions[qi].options.push(''); pushHistory(); renderTasks(); }
+            }
             saveState();
+            return;
+        }
+        // Ask add-option button (inline, not slot-add)
+        const askAddOpt = e.target.closest('.ask-add-option');
+        if (askAddOpt) {
+            const card = askAddOpt.closest('.task-card'); const id = card.dataset.nodeId; const f = findNode(id);
+            if (!f) return;
+            const qi = +askAddOpt.dataset.qindex;
+            if (f.node.questions[qi]) { f.node.questions[qi].options.push(''); pushHistory(); renderTasks(); saveState(); }
             return;
         }
         const btn = e.target.closest('button[data-action]');
@@ -1106,6 +1476,33 @@
         else if (action === 'removeAgent')  { if (f && f.node.agents.length > 1) { f.node.agents.splice(+btn.dataset.agent, 1); pushHistory(); renderTasks(); saveState(); } }
         else if (action === 'removeBranch') { if (f && f.node.branches.length > 2) { f.node.branches.splice(+btn.dataset.branch, 1); pushHistory(); renderTasks(); saveState(); } }
         else if (action === 'targetType') { if (f) { f.node.targetType = btn.dataset.type; pushHistory(); renderTasks(); saveState(); } }
+        else if (action === 'removeQuestion') {
+            if (f && f.node.questions.length > 1) {
+                f.node.questions.splice(+btn.dataset.qindex, 1);
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
+        else if (action === 'removeOption') {
+            if (f) {
+                const qi = +btn.dataset.qindex;
+                const oi = +btn.dataset.oindex;
+                if (f.node.questions[qi] && f.node.questions[qi].options.length > 0) {
+                    f.node.questions[qi].options.splice(oi, 1);
+                    // Also remove corresponding branch if branching is enabled
+                    if (f.node.branches && f.node.branches.length > oi) {
+                        f.node.branches.splice(oi, 1);
+                    }
+                    pushHistory(); renderTasks(); saveState();
+                }
+            }
+        }
+        else if (action === 'removeAskBranch') {
+            if (f && f.node.branches) {
+                f.node.branches.splice(+btn.dataset.askbranch, 1);
+                // If no branches left, keep branches array empty (branching is still enabled but no options yet)
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
     });
 
     // ──────────────────────────────────────
@@ -1195,6 +1592,8 @@
     document.getElementById('btnAddLoop').addEventListener('click', () => addNodeTo(null, null, 'loop'));
     document.getElementById('btnAddSub').addEventListener('click', () => addNodeTo(null, null, 'subagent'));
     document.getElementById('btnAddParallel').addEventListener('click', () => addNodeTo(null, null, 'parallel'));
+    document.getElementById('btnAddAsk').addEventListener('click', () => addNodeTo(null, null, 'ask'));
+    document.getElementById('btnAddPackage').addEventListener('click', () => addNodeTo(null, null, 'package'));
 
     // ──────────────────────────────────────
     // Variables  [5.1]
@@ -1277,7 +1676,6 @@
             if (!file) return;
             if (!r.name) r.name = file.name.replace(/[^A-Za-z0-9_]/g, '_');
             r.value = file.name;
-            // small images → inline thumbnail; otherwise reference by name only (quota-safe)
             if (r.kind === 'image' && file.size < 200 * 1024) {
                 const reader = new FileReader();
                 reader.onload = ev => { r.thumb = ev.target.result; renderResources(); updatePreview(); saveState(); };
@@ -1493,8 +1891,8 @@
                         (() => { const t = makeTask('clone'); t.target = '${repo}'; return t; })(),
                         (() => { const t = makeTask('analyze'); t.target = 'existing codebase structure and patterns'; t.details = 'Understand the current project layout, conventions, and technical debt'; return t; })(),
                         (() => { const sa = makeSubagent(); sa.execMode = 'parallel'; sa.agents = [
-                            (() => { const a = makeAgent(); a.role = 'Architect'; a.task = 'Design the system architecture and data model'; a.agentic = true; return a; })(),
-                            (() => { const a = makeAgent(); a.role = 'Security Analyst'; a.task = 'Identify security requirements and threat model'; a.agentic = true; return a; })(),
+                            (() => { const a = makeAgent(); a.role = 'Architect'; a.task = 'Design the system architecture and data model'; a.agentic = true; a.isPrimary = true; a.domain = 'System Design'; a.rationale = 'Ensures consistent architecture decisions'; a.outputFile = '${project}_architecture.md'; return a; })(),
+                            (() => { const a = makeAgent(); a.role = 'Security Analyst'; a.task = 'Identify security requirements and threat model'; a.agentic = true; a.domain = 'Security'; a.rationale = 'Ensures OWASP top-10 coverage'; a.outputFile = '${project}_security_report.md'; return a; })(),
                         ]; return sa; })(),
                         (() => { const t = makeTask('document'); t.target = 'architecture document at docs/${project}_architecture.md'; t.details = 'Include: ER diagram, API contract, folder structure, and tech decisions with rationale'; return t; })(),
                     ]; return sec; })(),
@@ -1507,15 +1905,15 @@
                     ]; return sec; })(),
                     (() => { const sec = makeSection(); sec.title = 'Phase 2 — Review & Deliver'; sec.goalNote = 'Quality assurance and final delivery'; sec.exitCriteria = 'All tests pass and code review approved'; sec.children = [
                         (() => { const sa = makeSubagent(); sa.execMode = 'parallel'; sa.agents = [
-                            (() => { const a = makeAgent(); a.role = 'Code Reviewer'; a.task = 'Review all code for quality, security, and maintainability'; a.agentic = true; return a; })(),
-                            (() => { const a = makeAgent(); a.role = 'QA Tester'; a.task = 'Run end-to-end tests and verify all acceptance criteria'; a.agentic = true; return a; })(),
+                            (() => { const a = makeAgent(); a.role = 'Code Reviewer'; a.task = 'Review all code for quality, security, and maintainability'; a.agentic = true; a.domain = 'Code Quality'; return a; })(),
+                            (() => { const a = makeAgent(); a.role = 'QA Tester'; a.task = 'Run end-to-end tests and verify all acceptance criteria'; a.agentic = true; a.domain = 'Testing'; return a; })(),
                         ]; return sa; })(),
                         (() => { const n = makeIf(); n.condition = 'all reviews pass and tests green'; n.then = [
                             (() => { const t = makeTask('deploy'); t.target = 'production'; return t; })(),
                         ]; n.else = [
                             (() => { const t = makeTask('debug'); t.target = 'review findings and test failures'; t.details = 'Fix all critical issues; re-test and re-review'; return t; })(),
                         ]; return n; })(),
-                        (() => { const t = makeTask('document'); t.target = 'README, API docs, and deployment guide'; return t; })(),
+                        (() => { const pkg = makePackage(); pkg.archiveName = '${project}_deliverable.zip'; pkg.tree = '${project}/\n├── src/\n│   ├── index.ts\n│   ├── api/\n│   └── utils/\n├── tests/\n├── docs/\n│   └── ${project}_architecture.md\n├── README.md\n└── package.json'; return pkg; })(),
                     ]; return sec; })(),
                 ],
             })
@@ -1539,6 +1937,34 @@
             item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadTemplate(idx); } });
             container.appendChild(item);
         });
+        // Also render user-imported templates from localStorage
+        const userTemplates = getUserTemplates();
+        userTemplates.forEach((tpl, idx) => {
+            const item = document.createElement('div');
+            item.className = 'template-item template-item-user';
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('aria-label', 'Load user template: ' + tpl.name);
+            item.innerHTML = '<span class="template-item-name">' + escapeHtml(tpl.name) + '</span>' +
+                '<span class="template-item-desc">' + escapeHtml(tpl.desc || '') + '</span>' +
+                '<button class="btn-icon-small tpl-delete" data-utidx="' + idx + '" title="Delete template" aria-label="Delete template">🗑️</button>';
+            item.addEventListener('click', (e) => {
+                if (e.target.closest('.tpl-delete')) return;
+                loadUserTemplate(idx);
+            });
+            item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadUserTemplate(idx); } });
+            item.querySelector('.tpl-delete').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm('Delete template "' + tpl.name + '"?')) {
+                    const tpls = getUserTemplates();
+                    tpls.splice(idx, 1);
+                    setUserTemplates(tpls);
+                    renderTemplateList();
+                    showToast('Template deleted');
+                }
+            });
+            container.appendChild(item);
+        });
     }
 
     function loadTemplate(idx) {
@@ -1546,7 +1972,6 @@
         if (!tpl) return;
         if (!confirm('Load template "' + tpl.name + '"?\nThis will replace your current workflow.')) return;
         state = deepClone(tpl.state);
-        // Re-id all nodes so they get fresh unique IDs
         (state.nodes || []).forEach(reId);
         state.schema = SCHEMA;
         pushHistory();
@@ -1554,6 +1979,71 @@
         saveState();
         closeSidebar();
         showToast('Loaded template: ' + tpl.name);
+    }
+
+    function loadUserTemplate(idx) {
+        const tpls = getUserTemplates();
+        const tpl = tpls[idx];
+        if (!tpl || !tpl.state) { showToast('⚠️ Invalid template'); return; }
+        if (!confirm('Load template "' + tpl.name + '"?\nThis will replace your current workflow.')) return;
+        state = Object.assign(defaultState(), deepClone(tpl.state));
+        (state.nodes || []).forEach(reId);
+        state.schema = SCHEMA;
+        pushHistory();
+        updateAllUI();
+        saveState();
+        closeSidebar();
+        showToast('Loaded template: ' + tpl.name);
+    }
+
+    // ──────────────────────────────────────
+    // User templates (localStorage)
+    // ──────────────────────────────────────
+    function getUserTemplates() { try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY)) || []; } catch (e) { return []; } }
+    function setUserTemplates(t) { try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(t)); } catch (e) {} }
+
+    function exportTemplateToFile() {
+        const name = prompt('Template name:');
+        if (!name || !name.trim()) return;
+        const desc = prompt('Template description (optional):') || '';
+        const templateData = {
+            name: name.trim(),
+            desc: desc.trim(),
+            state: deepClone(state)
+        };
+        templateData.state.schema = SCHEMA;
+        const json = JSON.stringify(templateData, null, 2);
+        download(json, name.trim().replace(/[^A-Za-z0-9_-]/g, '_') + '-template.json', 'application/json');
+        showToast('Template exported');
+    }
+
+    function importTemplateFromFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.addEventListener('change', (e) => {
+            if (!e.target.files.length) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (!data.name || !data.state || !Array.isArray(data.state.nodes)) {
+                        showToast('⚠️ Invalid template file');
+                        return;
+                    }
+                    const tpls = getUserTemplates();
+                    tpls.push({ name: data.name, desc: data.desc || '', state: data.state });
+                    setUserTemplates(tpls);
+                    renderTemplateList();
+                    showToast('Template imported: ' + data.name);
+                } catch (err) {
+                    showToast('⚠️ Invalid JSON file');
+                }
+            };
+            reader.readAsText(e.target.files[0]);
+            input.value = '';
+        });
+        input.click();
     }
 
     // ──────────────────────────────────────
@@ -1624,6 +2114,12 @@
         reader.readAsText(e.target.files[0]); importFileInput.value = '';
     });
 
+    // Template export/import buttons
+    const btnExportTemplate = document.getElementById('btnExportTemplate');
+    const btnImportTemplate = document.getElementById('btnImportTemplate');
+    if (btnExportTemplate) btnExportTemplate.addEventListener('click', exportTemplateToFile);
+    if (btnImportTemplate) btnImportTemplate.addEventListener('click', importTemplateFromFile);
+
     function openSidebar() { document.body.classList.add('sidebar-open'); }
     function closeSidebar() { document.body.classList.remove('sidebar-open'); }
     sidebarToggle.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
@@ -1656,5 +2152,5 @@
     renderTemplateList();
     renderWorkflowList();
     pushHistory();
-    console.log('Prompt Generator (tree model) ready');
+    console.log('Prompt Generator (tree model, schema 4) ready');
 })();

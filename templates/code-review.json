@@ -1,0 +1,36 @@
+{
+  "name": "Code Review",
+  "desc": "Systematic PR review with per-file loop, security and style checks",
+  "state": {
+    "schema": 4,
+    "roleSelectValue": "Code Reviewer (meticulous, checks security, performance & readability)",
+    "customRole": "",
+    "agentic": false,
+    "subagent": false,
+    "verbose": false,
+    "strict": true,
+    "contextProject": "",
+    "contextTech": "",
+    "contextConstraints": "",
+    "contextOutput": "bullet_points",
+    "variables": [
+      { "name": "repo", "value": "" },
+      { "name": "prNumber", "value": "" }
+    ],
+    "resources": [],
+    "outputMode": "pseudocode",
+    "verbosity": "explicit",
+    "nodes": [
+      { "id": "t_01", "type": "task", "action": "clone", "target": "${repo}", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "" },
+      { "id": "t_02", "type": "task", "action": "analyze", "target": "the PR diff and changed files", "details": "Get the full list of changed files and understand the PR purpose", "gotoRef": "", "targetType": "file", "rulesList": "" },
+      { "id": "lp_01", "type": "loop", "loopType": "for_each", "source": "changed files in PR", "itemVar": "file", "maxIterations": "", "exitCondition": "", "collapsed": false, "body": [
+        { "id": "t_03", "type": "task", "action": "review", "target": "${file}", "details": "Check for: bugs, security issues, performance, readability, naming, and style consistency", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "if_01", "type": "if", "condition": "issues found in ${file}", "collapsed": false, "then": [
+          { "id": "t_04", "type": "task", "action": "document", "target": "issues found in ${file}", "details": "List each issue with line number, severity, and suggested fix", "gotoRef": "", "targetType": "file", "rulesList": "" }
+        ], "elseifs": [], "else": [] }
+      ]},
+      { "id": "gt_01", "type": "gate", "prompt": "Review complete — approve the PR?", "onReject": "Request changes from the author" },
+      { "id": "t_05", "type": "task", "action": "document", "target": "final review summary", "details": "Include: overall assessment, critical issues, minor suggestions, and approval/rejection decision", "gotoRef": "", "targetType": "file", "rulesList": "" }
+    ]
+  }
+}

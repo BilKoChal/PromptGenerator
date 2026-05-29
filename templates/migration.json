@@ -1,0 +1,45 @@
+{
+  "name": "Migration",
+  "desc": "Plan and execute a technology migration with approval gates and revision loops",
+  "state": {
+    "schema": 4,
+    "roleSelectValue": "DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)",
+    "customRole": "",
+    "agentic": true,
+    "subagent": false,
+    "verbose": false,
+    "strict": false,
+    "contextProject": "",
+    "contextTech": "",
+    "contextConstraints": "Backward compatible, no downtime, rollback plan required",
+    "contextOutput": "",
+    "variables": [
+      { "name": "repo", "value": "" },
+      { "name": "fromTech", "value": "" },
+      { "name": "toTech", "value": "" }
+    ],
+    "resources": [],
+    "outputMode": "pseudocode",
+    "verbosity": "explicit",
+    "nodes": [
+      { "id": "sec_01", "type": "section", "title": "Research & Planning", "goalNote": "Understand current system and create migration plan", "exitCriteria": "Migration plan approved by user", "collapsed": false, "children": [
+        { "id": "t_01", "type": "task", "action": "analyze", "target": "current system architecture and dependencies", "details": "Map all services, databases, APIs, and integrations that will be affected", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "t_02", "type": "task", "action": "research", "target": "best practices for migrating from ${fromTech} to ${toTech}", "details": "Look for official migration guides, known pitfalls, and recommended tooling", "gotoRef": "", "targetType": "file", "rulesList": "" },
+        { "id": "t_03", "type": "task", "action": "document", "target": "migration plan with rollback strategy", "details": "Include: step-by-step migration order, rollback procedures, risk assessment, and timeline estimates", "gotoRef": "", "targetType": "file", "rulesList": "" }
+      ]},
+      { "id": "gt_01", "type": "gate", "prompt": "Migration plan approved — proceed with implementation?", "onReject": "Revise the plan based on feedback" },
+      { "id": "sec_02", "type": "section", "title": "Implementation & Testing", "goalNote": "Execute the migration in stages with verification", "exitCriteria": "", "collapsed": false, "children": [
+        { "id": "lp_01", "type": "loop", "loopType": "for_each", "source": "migration plan steps", "itemVar": "step", "maxIterations": "3", "exitCondition": "user is satisfied with results", "collapsed": false, "body": [
+          { "id": "t_04", "type": "task", "action": "implement", "target": "${step}", "details": "Apply the migration step as described in the plan", "gotoRef": "", "targetType": "file", "rulesList": "" },
+          { "id": "t_05", "type": "task", "action": "test", "target": "system after ${step}", "details": "Run all integration tests, smoke tests, and manual verification", "gotoRef": "", "targetType": "file", "rulesList": "" },
+          { "id": "if_01", "type": "if", "condition": "tests pass after ${step}", "collapsed": false, "then": [
+            { "id": "t_06", "type": "task", "action": "deploy", "target": "migrated ${step} to staging", "details": "", "gotoRef": "", "targetType": "file", "rulesList": "" }
+          ], "elseifs": [], "else": [
+            { "id": "t_07", "type": "task", "action": "debug", "target": "failures after ${step}", "details": "Investigate and fix; if unfixable, rollback this step", "gotoRef": "", "targetType": "file", "rulesList": "" }
+          ]}
+        ]}
+      ]},
+      { "id": "t_08", "type": "task", "action": "deploy", "target": "fully migrated system to production", "details": "Switch traffic, monitor metrics, and confirm stability", "gotoRef": "", "targetType": "file", "rulesList": "" }
+    ]
+  }
+}
