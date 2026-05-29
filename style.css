@@ -264,15 +264,103 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .slot-block { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; border-left-width: 3px; }
 .agent-block { border-color: var(--sub-border); }
 
-/* R1: progressive depth cue — deeper nesting steps inward with a tinted left rail */
-.task-card.depth-1 { border-left: 3px solid var(--border-strong); }
-.task-card.depth-2 { border-left: 3px solid var(--loop-border); }
-.task-card.depth-3 { border-left: 3px solid var(--if-border); }
-.task-card.depth-4 { border-left: 3px solid var(--sub-border); }
-.task-card.depth-5 { border-left: 3px solid var(--par-border); }
-.task-card.depth-6 { border-left: 3px solid var(--primary); }
+/* R1: progressive depth cue — deeper nesting steps inward with a tinted left rail,
+   increasing padding, and subtle background tint shifts per depth level */
+
+/* Depth 0 — root-level cards: default styling, no extra indent */
+.task-card.depth-0 { border-left: 3px solid var(--primary); }
+
+/* Depth 1 — one level nested */
+.task-card.depth-1 {
+    border-left: 4px solid var(--border-strong);
+    padding-left: 20px;
+    background: var(--card-bg);
+}
+
+/* Depth 2 — two levels deep */
+.task-card.depth-2 {
+    border-left: 4px solid var(--loop-border);
+    padding-left: 24px;
+    background: color-mix(in srgb, var(--loop-light) 15%, var(--card-bg-2));
+}
+
+/* Depth 3 — three levels deep */
+.task-card.depth-3 {
+    border-left: 4px solid var(--if-border);
+    padding-left: 28px;
+    background: color-mix(in srgb, var(--if-light) 15%, var(--card-bg-2));
+}
+
+/* Depth 4 — four levels deep */
+.task-card.depth-4 {
+    border-left: 4px solid var(--sub-border);
+    padding-left: 32px;
+    background: color-mix(in srgb, var(--sub-light) 15%, var(--card-bg-2));
+}
+
+/* Depth 5 — five levels deep */
+.task-card.depth-5 {
+    border-left: 4px solid var(--par-border);
+    padding-left: 36px;
+    background: color-mix(in srgb, var(--par-light) 15%, var(--card-bg-2));
+}
+
+/* Depth 6+ — maximum depth */
+.task-card.depth-6 {
+    border-left: 4px solid var(--primary);
+    padding-left: 40px;
+    background: color-mix(in srgb, var(--primary-light) 15%, var(--card-bg-2));
+}
+
+/* Container cards at each depth get a slightly stronger tint to reinforce nesting */
+.task-card.depth-1.card-if,
+.task-card.depth-1.card-loop,
+.task-card.depth-1.card-subagent,
+.task-card.depth-1.card-parallel,
+.task-card.depth-1.card-section {
+    background: color-mix(in srgb, var(--if-light) 20%, var(--card-bg-2));
+}
+
+.task-card.depth-2.card-if,
+.task-card.depth-2.card-loop,
+.task-card.depth-2.card-subagent,
+.task-card.depth-2.card-parallel,
+.task-card.depth-2.card-section {
+    background: color-mix(in srgb, var(--loop-light) 20%, var(--card-bg-2));
+}
+
+.task-card.depth-3.card-if,
+.task-card.depth-3.card-loop,
+.task-card.depth-3.card-subagent,
+.task-card.depth-3.card-parallel,
+.task-card.depth-3.card-section {
+    background: color-mix(in srgb, var(--if-light) 20%, var(--card-bg-2));
+}
+
+/* Drop zone cards step inward to match their parent's depth */
 .drop-zone > .task-card { margin-left: 2px; }
 .slots-wrap .slot-block { margin-left: 4px; }
+
+/* Depth indicator — a tiny colored bar at the top of deeply nested cards */
+.task-card.depth-2::before,
+.task-card.depth-3::before,
+.task-card.depth-4::before,
+.task-card.depth-5::before,
+.task-card.depth-6::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    opacity: 0.5;
+}
+.task-card.depth-2::before { background: var(--loop-color); }
+.task-card.depth-3::before { background: var(--if-color); }
+.task-card.depth-4::before { background: var(--sub-color); }
+.task-card.depth-5::before { background: var(--par-color); }
+.task-card.depth-6::before { background: var(--primary); }
 .slot-head { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
 .branch-then { color: var(--success); } .branch-else { color: var(--danger); }
 .branch-elseif { color: var(--warning); } .branch-loop { color: var(--loop-color); }
