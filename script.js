@@ -69,7 +69,7 @@
         { value: 'repeat',   label: 'Repeat N times' },
     ];
 
-    const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel', 'ask'];
+    const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel', 'ask', 'route'];
     const isContainer = (n) => CONTAINER_TYPES.includes(n.type);
     // Leaf-only types (for reference, validation, etc.)
     const LEAF_TYPES = ['task', 'gate', 'package', 'table'];
@@ -126,6 +126,17 @@
             collapsed: false
         };
     }
+    function makeRoute() {
+        return {
+            id: uid('rt'), type: 'route',
+            on: 'user intent',
+            cases: [
+                { label: '', match: '', children: [] }
+            ],
+            defaultCase: [],
+            collapsed: false
+        };
+    }
     function makeNode(kind) {
         if (kind === 'section') return makeSection();
         if (kind === 'if') return makeIf();
@@ -136,6 +147,7 @@
         if (kind === 'ask') return makeAsk();
         if (kind === 'package') return makePackage();
         if (kind === 'table') return makeTable();
+        if (kind === 'route') return makeRoute();
         return makeTask();
     }
 
@@ -159,6 +171,11 @@
             }
             return [];
         }
+        if (node.type === 'route') {
+            const s = (node.cases || []).map((c, i) => ({ key: 'case:' + i, label: 'CASE', arr: c.children }));
+            s.push({ key: 'default', label: 'DEFAULT', arr: node.defaultCase });
+            return s;
+        }
         return [];
     }
     function getSlotArr(node, slotKey) {
@@ -171,6 +188,8 @@
         if (slotKey.indexOf('agent:') === 0)  { const i = +slotKey.split(':')[1]; return node.agents[i] && node.agents[i].children; }
         if (slotKey.indexOf('branch:') === 0) { const i = +slotKey.split(':')[1]; return node.branches[i]; }
         if (slotKey.indexOf('askbranch:') === 0) { const i = +slotKey.split(':')[1]; return node.branches[i]; }
+        if (slotKey.indexOf('case:') === 0) { const i = +slotKey.split(':')[1]; return node.cases && node.cases[i] && node.cases[i].children; }
+        if (slotKey === 'default') return node.defaultCase;
         return null;
     }
 
@@ -178,7 +197,7 @@
     // Tree helpers  [foundation for #3/#4/#6, fixes B14]
     // ──────────────────────────────────────
     function findNode(id, arr) {
-        arr = arr || state.nodes;
+        arr = arr || getActiveModeNodes();
         for (let i = 0; i < arr.length; i++) {
             const n = arr[i];
             if (n.id === id) return { node: n, parentArr: arr, index: i };
@@ -218,7 +237,7 @@
         targetArr.splice(insertAt, 0, node);
     }
     function walk(arr, fn, depth, prefix) {
-        arr = arr || state.nodes; depth = depth || 0; prefix = prefix || '';
+        arr = arr || getActiveModeNodes(); depth = depth || 0; prefix = prefix || '';
         arr.forEach((n, i) => {
             const num = prefix ? prefix + '.' + (i + 1) : String(i + 1);
             fn(n, depth, num, arr, i);
@@ -227,7 +246,7 @@
     }
     function collectReferencableSteps() {
         const out = [];
-        walk(state.nodes, (n, depth, num) => {
+        walk(getActiveModeNodes(), (n, depth, num) => {
             if (n.type === 'task' && n.action !== 'goto' && n.action !== 'break' && n.action !== 'continue') {
                 const verb = getVerb(n);
                 out.push({ id: n.id, label: 'Step ' + num + ' — ' + verb + (n.target ? ' ' + n.target.slice(0, 20) : '') });
@@ -241,13 +260,15 @@
                 out.push({ id: n.id, label: 'Step ' + num + ' — PACKAGE ' + (n.archiveName || '').slice(0, 20) });
             } else if (n.type === 'table') {
                 out.push({ id: n.id, label: 'Step ' + num + ' — TABLE ' + (n.caption || '').slice(0, 20) });
+            } else if (n.type === 'route') {
+                out.push({ id: n.id, label: 'Step ' + num + ' — ROUTE ' + (n.on || '').slice(0, 20) });
             }
         });
         return out;
     }
     function stepNumberOf(id) {
         let r = null;
-        walk(state.nodes, (n, d, num) => { if (n.id === id) r = num; });
+        walk(getActiveModeNodes(), (n, d, num) => { if (n.id === id) r = num; });
         return r;
     }
     function gotoTitle(id) {
@@ -260,11 +281,12 @@
         if (n.type === 'ask') return 'ASK: ' + ((n.questions && n.questions[0] && n.questions[0].text) || '');
         if (n.type === 'package') return 'PACKAGE: ' + (n.archiveName || '');
         if (n.type === 'table') return 'TABLE: ' + (n.caption || '');
+        if (n.type === 'route') return 'ROUTE: ' + (n.on || '');
         return n.type;
     }
     function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
     function reId(node) {
-        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type === 'package' ? 'pkg' : node.type === 'ask' ? 'ask' : node.type === 'table' ? 'tbl' : node.type.slice(0, 2));
+        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type === 'package' ? 'pkg' : node.type === 'ask' ? 'ask' : node.type === 'table' ? 'tbl' : node.type === 'route' ? 'rt' : node.type.slice(0, 2));
         slotsOf(node).forEach(s => s.arr.forEach(reId));
         if (node.type === 'subagent') (node.agents || []).forEach(a => { a.id = uid('ag'); });
         if (node.type === 'ask') (node.questions || []).forEach(q => { q.id = uid('q'); });
@@ -274,13 +296,17 @@
     // ──────────────────────────────────────
     // State
     // ──────────────────────────────────────
-    const STORAGE_KEY = 'prompt_generator_state_v5';
+    const STORAGE_KEY = 'prompt_generator_state_v6';
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
     const TEMPLATES_KEY = 'prompt_generator_templates';
     const THEME_KEY = 'prompt_generator_theme';
-    const SCHEMA = 5;
+    const SCHEMA = 6;
 
+    function defaultMode() {
+        return { id: uid('mode'), name: '/default', summary: 'Default mode', flags: [], nodes: [ makeTask('clone'), makeTask('analyze') ] };
+    }
     function defaultState() {
+        const nodes = [ makeTask('clone'), makeTask('analyze') ];
         return {
             schema: SCHEMA,
             roleSelectValue: 'Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)',
@@ -292,10 +318,35 @@
             resources: [],
             outputMode: 'pseudocode',
             verbosity: 'explicit',
-            nodes: [ makeTask('clone'), makeTask('analyze') ],
+            modes: [{ id: uid('mode'), name: '/default', summary: 'Default mode', flags: [], nodes: nodes }],
+            activeModeId: null,
+            multiModeEnabled: false,
+            nodes: nodes,  // same reference as modes[0].nodes
         };
     }
     let state = defaultState();
+
+    // ──────────────────────────────────────
+    // Mode helpers
+    // ──────────────────────────────────────
+    function getActiveMode() {
+        if (!state.modes || !state.modes.length) return null;
+        if (state.activeModeId) {
+            const m = state.modes.find(m => m.id === state.activeModeId);
+            if (m) return m;
+        }
+        return state.modes[0];
+    }
+    function getActiveModeNodes() {
+        if (!state.multiModeEnabled) return state.nodes;
+        const mode = getActiveMode();
+        return mode ? mode.nodes : state.nodes;
+    }
+    function isSingleDefaultMode() {
+        if (!state.modes || state.modes.length !== 1) return false;
+        const m = state.modes[0];
+        return m.name === '/default' && !(m.flags && m.flags.length) && !state.multiModeEnabled;
+    }
 
     // Undo / redo  [5.4]
     const history = []; let histIndex = -1; let suppressHistory = false;
@@ -321,8 +372,11 @@
     function loadState() {
         try {
             const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return;
-            const saved = JSON.parse(raw);
+            // Also try old v5 key for migration
+            const rawV5 = !raw ? localStorage.getItem('prompt_generator_state_v5') : null;
+            const dataRaw = raw || rawV5;
+            if (!dataRaw) return;
+            const saved = JSON.parse(dataRaw);
             // Any tree-model save (schema 2+) loads by merging onto current defaults,
             // which fills in newly-added fields (resources, verbosity, …).
             if (saved.schema >= 2 && Array.isArray(saved.nodes)) {
@@ -331,12 +385,14 @@
                 migrateOldActions(state.nodes);
                 migrateSchema4(state.nodes);
                 migrateSchema5(state.nodes);
+                migrateSchema6(state);
             } else {
                 const legacy = localStorage.getItem('prompt_generator_state_v4') || localStorage.getItem('prompt_generator_state_v3');
                 migrate(saved.tasks ? saved : (legacy ? JSON.parse(legacy) : saved));
                 migrateOldActions(state.nodes);
                 migrateSchema4(state.nodes);
                 migrateSchema5(state.nodes);
+                migrateSchema6(state);
             }
         } catch (e) { state = defaultState(); }
     }
@@ -382,6 +438,47 @@
         nodes.forEach(n => {
             if (n.type === 'task' && !('contentOutline' in n)) { n.contentOutline = ''; }
             if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema5(s.arr));
+        });
+    }
+
+    // Schema 6 migration: modes support, route node support
+    function migrateSchema6(st) {
+        if (!st) return;
+        // Migrate state.nodes to state.modes[0].nodes if modes doesn't exist or is from default state
+        if (!st.modes || !st.modes.length) {
+            st.modes = [{ id: uid('mode'), name: '/default', summary: 'Default mode', flags: [], nodes: st.nodes || [] }];
+        } else {
+            // Even if modes[] exists (from Object.assign with defaultState),
+            // the modes[0].nodes might be the default placeholder, not the user's actual nodes.
+            // Always sync modes[0].nodes with state.nodes when multiMode is off.
+            if (!st.multiModeEnabled && st.nodes && Array.isArray(st.nodes)) {
+                // Check if modes[0].nodes is the default placeholder (differs from state.nodes)
+                if (st.modes[0].nodes !== st.nodes) {
+                    st.modes[0].nodes = st.nodes;
+                }
+            }
+        }
+        if (!('activeModeId' in st)) st.activeModeId = null;
+        if (!('multiModeEnabled' in st)) st.multiModeEnabled = false;
+        // Migrate route nodes inside all mode trees
+        st.modes.forEach(mode => {
+            if (mode.nodes) migrateSchema6Nodes(mode.nodes);
+        });
+        // Also migrate state.nodes (legacy)
+        if (st.nodes) migrateSchema6Nodes(st.nodes);
+    }
+    function migrateSchema6Nodes(nodes) {
+        if (!nodes) return;
+        nodes.forEach(n => {
+            if (n.type === 'route') {
+                if (!n.cases) n.cases = [{ label: '', match: '', children: [] }];
+                if (!n.defaultCase) n.defaultCase = [];
+                if (!n.on) n.on = 'user intent';
+                n.cases.forEach(c => {
+                    if (!c.children) c.children = [];
+                });
+            }
+            if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema6Nodes(s.arr));
         });
     }
 
@@ -527,9 +624,25 @@
             out += 'MEMORY: Save this entire prompt as "' + (state.memoryFile || 'AGENT_PROMPT.md') + '" and re-read it at the start of every new request. Never discard or summarize it.\n';
         }
         out += resourcesPseudo();
-        out += '\nSTEPS\n';
-        if (!state.nodes.length) out += '  (no steps)\n';
-        else state.nodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
+        // Multi-mode output
+        if (state.multiModeEnabled && state.modes && state.modes.length > 0) {
+            state.modes.forEach((mode, mi) => {
+                out += '\nMODE: ' + mode.name + (mode.summary ? ' — ' + mode.summary : '') + '\n';
+                if (mode.flags && mode.flags.length) {
+                    mode.flags.forEach(f => {
+                        out += '  Flag: ' + f.name + (f.desc ? ': ' + f.desc : '') + '\n';
+                    });
+                }
+                out += 'STEPS\n';
+                if (!mode.nodes || !mode.nodes.length) out += '  (no steps)\n';
+                else mode.nodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
+            });
+        } else {
+            out += '\nSTEPS\n';
+            const activeNodes = getActiveModeNodes();
+            if (!activeNodes.length) out += '  (no steps)\n';
+            else activeNodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
+        }
         return out.replace(/\n+$/, '') + '\n';
     }
     function resourcesPseudo() {
@@ -794,6 +907,34 @@
             });
             return s;
         }
+        if (n.type === 'route') {
+            const on = n.on ? interp(n.on) : '<dispatch field?>';
+            if (isExplicit()) {
+                let s = ind + num + '. DECIDE based on ' + on + ':\n';
+                (n.cases || []).forEach((c, ci) => {
+                    const label = c.label ? interp(c.label) : 'case ' + (ci + 1);
+                    const match = c.match ? interp(c.match) : '';
+                    s += ind + '   If the request matches "' + label + '"' + (match ? ' ("' + match + '")' : '') + ':\n';
+                    s += slotPseudo(c.children, depth + 2, num + '.' + (ci + 1));
+                });
+                if ((n.defaultCase || []).length) {
+                    s += ind + '   Otherwise:\n';
+                    s += slotPseudo(n.defaultCase, depth + 2, num + '.' + ((n.cases || []).length + 1));
+                }
+                return s;
+            }
+            let s = ind + num + '. ROUTE on ' + on + ':\n';
+            (n.cases || []).forEach((c, ci) => {
+                const label = c.label ? interp(c.label) : 'case ' + (ci + 1);
+                s += ind + '   case "' + label + '" →\n';
+                s += slotPseudo(c.children, depth + 2, num + '.' + (ci + 1));
+            });
+            if ((n.defaultCase || []).length) {
+                s += ind + '   default →\n';
+                s += slotPseudo(n.defaultCase, depth + 2, num + '.' + ((n.cases || []).length + 1));
+            }
+            return s;
+        }
         if (n.type === 'section') {
             const title = n.title ? interp(n.title) : 'Untitled phase';
             let s = ind + '=== PHASE ' + num + ': ' + title + ' ===\n';
@@ -829,9 +970,27 @@
             md += '\n## Memory Directive\nSave this entire prompt as `' + (state.memoryFile || 'AGENT_PROMPT.md') + '` and re-read it at the start of every new request. Never discard or summarize it.\n';
         }
         md += resourcesMd();
-        md += '\n## Tasks\nPerform the following in order:\n\n';
-        if (!state.nodes.length) md += '_(no tasks defined)_\n';
-        else state.nodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
+        // Multi-mode output
+        if (state.multiModeEnabled && state.modes && state.modes.length > 0) {
+            state.modes.forEach((mode, mi) => {
+                md += '\n## Mode: ' + mode.name + (mode.summary ? ' — ' + mode.summary : '') + '\n\n';
+                if (mode.flags && mode.flags.length) {
+                    md += '**Flags:**\n';
+                    mode.flags.forEach(f => {
+                        md += '- `' + f.name + '`' + (f.desc ? ': ' + f.desc : '') + '\n';
+                    });
+                    md += '\n';
+                }
+                md += 'Perform the following in order:\n\n';
+                if (!mode.nodes || !mode.nodes.length) md += '_(no tasks defined)_\n';
+                else mode.nodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
+            });
+        } else {
+            md += '\n## Tasks\nPerform the following in order:\n\n';
+            const activeNodes = getActiveModeNodes();
+            if (!activeNodes.length) md += '_(no tasks defined)_\n';
+            else activeNodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
+        }
         md += '\n---\n_Generated with Prompt Generator_\n';
         return md;
     }
@@ -1006,6 +1165,21 @@
             (n.branches || []).forEach((b, bi) => { s += ind + '  - _branch ' + (bi + 1) + ':_\n'; s += slotMd(b, depth + 2, num + '.' + (bi + 1)); });
             return s;
         }
+        if (n.type === 'route') {
+            const on = n.on ? interp(n.on) : '?';
+            let s = ind + '- **' + num + '. ROUTE** on `' + on + '`:\n';
+            (n.cases || []).forEach((c, ci) => {
+                const label = c.label ? interp(c.label) : 'case ' + (ci + 1);
+                const match = c.match ? interp(c.match) : '';
+                s += ind + '  - _case "' + label + '"' + (match ? ' (`' + match + '`)' : '') + ':_\n';
+                s += slotMd(c.children, depth + 2, num + '.' + (ci + 1));
+            });
+            if ((n.defaultCase || []).length) {
+                s += ind + '  - _otherwise:_\n';
+                s += slotMd(n.defaultCase, depth + 2, num + '.' + ((n.cases || []).length + 1));
+            }
+            return s;
+        }
         return '';
     }
     function slotMd(arr, depth, parentNum) {
@@ -1029,6 +1203,9 @@
     function collectIssues() {
         let missing = 0;
         const badIds = {};
+        const nodesToValidate = state.multiModeEnabled
+            ? state.modes.flatMap(m => m.nodes || [])
+            : getActiveModeNodes();
         (function rec(arr, inLoop) {
             arr.forEach(n => {
                 if (n.type === 'task') {
@@ -1047,12 +1224,17 @@
                 }
                 if (n.type === 'package' && !(n.archiveName || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (n.type === 'table' && !(n.headers || []).length) { missing++; badIds[n.id] = 1; }
+                if (n.type === 'route') {
+                    if (!(n.on || '').trim()) { missing++; badIds[n.id] = 1; }
+                    if (!(n.cases || []).length) { missing++; badIds[n.id] = 1; }
+                    else if ((n.cases || []).some(c => !(c.label || '').trim())) { missing++; badIds[n.id] = 1; }
+                }
                 if (isContainer(n)) {
                     const childInLoop = inLoop || n.type === 'loop';
                     slotsOf(n).forEach(s => rec(s.arr, childInLoop));
                 }
             });
-        })(state.nodes, false);
+        })(nodesToValidate, false);
         return { missing, badIds };
     }
 
@@ -1096,14 +1278,14 @@
             .replace(/^(# .+)$/gm, '<span class="md-h1">$1</span>')
             .replace(/^(## .+)$/gm, '<span class="md-h2">$1</span>')
             .replace(/^(### .+)$/gm, '<span class="md-h3">$1</span>')
-            .replace(/^(ROLE:|VARS:|CONTEXT:|MEMORY:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
+            .replace(/^(ROLE:|VARS:|CONTEXT:|MEMORY:|STEPS|MODE:|Flag:)(.*)$/gm, '<span class="md-h2">$1</span>$2')
             .replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">**$1**</span>')
             .replace(/`([^`]+?)`/g, '<span class="md-code">`$1`</span>')
             .replace(/(\/\/[^\n]*)$/gm, '<span class="md-comment">$1</span>')
             .replace(/\$\{[A-Za-z0-9_]+(?::UNDEFINED)?\}/g, '<span class="md-var">$&</span>')
             .replace(/(^|[^A-Za-z0-9_@])@([A-Za-z0-9_]+(?::UNDEFINED)?)/g, '$1<span class="md-resource">@$2</span>')
             .replace(/&lt;([a-zA-Z?: ]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
-            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm|ASK|PACKAGE|RULES|PRODUCE FILE|PLAN|LOG|SPLIT|VALIDATE|SYNTHESIZE|COMMIT|TABLE|MEMORY)\b/g, '<span class="md-keyword">$1</span>');
+            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm|ASK|PACKAGE|RULES|PRODUCE FILE|PLAN|LOG|SPLIT|VALIDATE|SYNTHESIZE|COMMIT|TABLE|MEMORY|ROUTE|DECIDE|Otherwise)\b/g, '<span class="md-keyword">$1</span>');
     }
 
     // ──────────────────────────────────────
@@ -1111,12 +1293,13 @@
     // ──────────────────────────────────────
     function renderTasks() {
         taskList.innerHTML = '';
-        if (!state.nodes.length) {
+        const activeNodes = getActiveModeNodes();
+        if (!activeNodes.length) {
             taskList.classList.add('empty-list');
-            taskList.innerHTML = '<p>No steps yet. Add a Task, If/Else, Loop, Sub-Agent, Parallel, Ask, or Package block.</p>';
+            taskList.innerHTML = '<p>No steps yet. Add a Task, If/Else, Loop, Sub-Agent, Parallel, Ask, Route, or Package block.</p>';
         } else {
             taskList.classList.remove('empty-list');
-            renderInto(state.nodes, taskList, 0);
+            renderInto(activeNodes, taskList, 0);
         }
         renderPreviewNow();
     }
@@ -1127,7 +1310,7 @@
     }
     function numberFor(node) {
         let result = '?';
-        walk(state.nodes, (n, d, num) => { if (n.id === node.id) result = num; });
+        walk(getActiveModeNodes(), (n, d, num) => { if (n.id === node.id) result = num; });
         return result;
     }
 
@@ -1141,7 +1324,8 @@
              node.type === 'gate' ? ' card-gate' :
              node.type === 'ask' ? ' card-ask' :
              node.type === 'package' ? ' card-package' :
-             node.type === 'table' ? ' card-table' : '');
+             node.type === 'table' ? ' card-table' :
+             node.type === 'route' ? ' card-route' : '');
 
         card.innerHTML =
             '<span class="task-number">' + numberFor(node) + '</span>' +
@@ -1174,6 +1358,7 @@
         if (node.type === 'ask')      return askHead(node);
         if (node.type === 'package')  return packageHead(node);
         if (node.type === 'table')    return tableHead(node);
+        if (node.type === 'route')    return routeHead(node);
         return '';
     }
 
@@ -1339,6 +1524,29 @@
         return html;
     }
 
+    function routeHead(node) {
+        let html = '<div class="block-label label-route">🔀 Route — Intent Dispatch</div>' +
+            '<div class="route-on-wrap"><label class="route-on-label">Dispatch based on</label>' +
+            '<input type="text" class="route-on-input" data-field="on" value="' + attr(node.on) + '" placeholder="user intent, request type, etc."></div>';
+        // Cases
+        html += '<div class="route-cases">';
+        (node.cases || []).forEach((c, ci) => {
+            html += '<div class="route-case" data-caseindex="' + ci + '">' +
+                '<div class="route-case-header">' +
+                    '<span class="route-case-num">Case ' + (ci + 1) + '</span>' +
+                    (node.cases.length > 1 ? '<button class="btn-icon btn-remove" data-action="removeCase" data-caseindex="' + ci + '" title="Remove case" aria-label="Remove case">✕</button>' : '') +
+                '</div>' +
+                '<div class="route-case-fields">' +
+                    '<input type="text" class="route-case-label" data-field="case_label" data-caseindex="' + ci + '" value="' + attr(c.label) + '" placeholder="Label, e.g. Bug Report">' +
+                    '<input type="text" class="route-case-match" data-field="case_match" data-caseindex="' + ci + '" value="' + attr(c.match) + '" placeholder="Match pattern, e.g. bug, error, crash">' +
+                '</div>' +
+            '</div>';
+        });
+        html += '</div>';
+        html += '<button class="slot-add" data-action="addCase">+ Add Case</button>';
+        return html;
+    }
+
     // ──────────────────────────────────────
     // Build nested slots (drop-zones + child cards)  [3.3]
     // ──────────────────────────────────────
@@ -1428,6 +1636,24 @@
                 }
             }
         }
+        else if (node.type === 'route') {
+            (node.cases || []).forEach((c, ci) => {
+                const label = c.label || 'Case ' + (ci + 1);
+                const match = c.match || '';
+                const block = document.createElement('div');
+                block.className = 'slot-block route-case-block';
+                block.innerHTML = '<div class="slot-head branch-route">CASE "' + escapeHtml(label) + '"' +
+                    (match ? ' <span class="route-match-hint">(' + escapeHtml(match) + ')</span>' : '') +
+                    '</div>';
+                block.appendChild(dropZone(node, 'case:' + ci, c.children, depth));
+                wrap.appendChild(block);
+            });
+            const defaultBlock = document.createElement('div');
+            defaultBlock.className = 'slot-block route-default-block';
+            defaultBlock.innerHTML = '<div class="slot-head branch-route-default">OTHERWISE (default)</div>';
+            defaultBlock.appendChild(dropZone(node, 'default', node.defaultCase, depth));
+            wrap.appendChild(defaultBlock);
+        }
         contentEl.appendChild(wrap);
     }
 
@@ -1466,6 +1692,7 @@
             '<button data-add="subagent">+ Sub-Agent</button>' +
             '<button data-add="parallel">+ Parallel</button>' +
             '<button data-add="ask">+ Ask</button>' +
+            '<button data-add="route">+ Route</button>' +
             '<button data-add="package">+ Package</button>' +
             '<button data-add="table">+ Table</button>';
         dz.appendChild(bar);
@@ -1477,7 +1704,7 @@
     // ──────────────────────────────────────
     function addNodeTo(parentId, slotKey, kind) {
         const node = makeNode(kind);
-        if (!parentId) { state.nodes.push(node); }
+        if (!parentId) { getActiveModeNodes().push(node); }
         else {
             const f = findNode(parentId);
             const arr = f && getSlotArr(f.node, slotKey);
@@ -1569,6 +1796,20 @@
                     f.node.branches = [];
                 }
                 pushHistory(); renderTasks(); saveState();
+            }
+            return;
+        }
+
+        // Route node case fields
+        if (field === 'case_label' || field === 'case_match') {
+            const caseIdx = e.target.dataset.caseindex;
+            if (caseIdx !== undefined) {
+                const f = findNode(id);
+                if (f && f.node.cases && f.node.cases[+caseIdx]) {
+                    if (field === 'case_label') f.node.cases[+caseIdx].label = e.target.value;
+                    if (field === 'case_match') f.node.cases[+caseIdx].match = e.target.value;
+                    updatePreview(); saveState();
+                }
             }
             return;
         }
@@ -1674,6 +1915,9 @@
                 const qi = +slotAdd.dataset.qindex;
                 if (f.node.questions[qi]) { f.node.questions[qi].options.push(''); pushHistory(); renderTasks(); }
             }
+            if (slotAdd.dataset.action === 'addCase') {
+                if (f.node.type === 'route') { f.node.cases.push({ label: '', match: '', children: [] }); pushHistory(); renderTasks(); }
+            }
             saveState();
             return;
         }
@@ -1727,6 +1971,13 @@
             if (f && f.node.branches) {
                 f.node.branches.splice(+btn.dataset.askbranch, 1);
                 // If no branches left, keep branches array empty (branching is still enabled but no options yet)
+                pushHistory(); renderTasks(); saveState();
+            }
+        }
+        // Route node actions
+        else if (action === 'removeCase') {
+            if (f && f.node.type === 'route' && f.node.cases.length > 1) {
+                f.node.cases.splice(+btn.dataset.caseindex, 1);
                 pushHistory(); renderTasks(); saveState();
             }
         }
@@ -1795,7 +2046,7 @@
             insertIdx = computeIndex(dz, e.clientY, targetArr);
         } else {
             // dropped on root list
-            targetArr = state.nodes;
+            targetArr = getActiveModeNodes();
             insertIdx = computeIndex(taskList, e.clientY, targetArr, true);
         }
         moveNode(draggedId, targetArr, insertIdx);
@@ -1852,6 +2103,7 @@
     document.getElementById('btnAddAsk').addEventListener('click', () => addNodeTo(null, null, 'ask'));
     document.getElementById('btnAddPackage').addEventListener('click', () => addNodeTo(null, null, 'package'));
     document.getElementById('btnAddTable').addEventListener('click', () => addNodeTo(null, null, 'table'));
+    document.getElementById('btnAddRoute').addEventListener('click', () => addNodeTo(null, null, 'route'));
 
     // ──────────────────────────────────────
     // Variables  [5.1]
@@ -1947,6 +2199,140 @@
         state.resources.splice(+btn.dataset.i, 1); renderResources(); pushHistory(); updatePreview();
     });
 
+    // ──────────────────────────────────────
+    // Modes  [MODE+FLAG]
+    // ──────────────────────────────────────
+    const modesCard = document.getElementById('modesCard');
+    const modeTabs = document.getElementById('modeTabs');
+    const modeEditArea = document.getElementById('modeEditArea');
+    const btnEnableMultiMode = document.getElementById('btnEnableMultiMode');
+    const btnAddMode = document.getElementById('btnAddMode');
+
+    function renderModes() {
+        if (!modesCard) return;
+        // If single default mode and multi-mode not enabled, show minimal UI
+        if (isSingleDefaultMode()) {
+            modesCard.classList.add('modes-collapsed');
+            if (modeTabs) modeTabs.innerHTML = '';
+            if (modeEditArea) modeEditArea.innerHTML = '';
+            if (btnEnableMultiMode) btnEnableMultiMode.style.display = '';
+            if (btnAddMode) btnAddMode.style.display = 'none';
+            return;
+        }
+        modesCard.classList.remove('modes-collapsed');
+        if (btnEnableMultiMode) btnEnableMultiMode.style.display = 'none';
+        if (btnAddMode) btnAddMode.style.display = '';
+
+        // Render tabs
+        if (modeTabs) {
+            modeTabs.innerHTML = '';
+            (state.modes || []).forEach((mode, i) => {
+                const tab = document.createElement('button');
+                tab.className = 'mode-tab' + (mode.id === (getActiveMode() || {}).id ? ' active' : '');
+                tab.textContent = mode.name || '/unnamed';
+                tab.dataset.modeId = mode.id;
+                tab.addEventListener('click', () => switchMode(mode.id));
+                modeTabs.appendChild(tab);
+            });
+        }
+
+        // Render edit area for active mode
+        const activeMode = getActiveMode();
+        if (modeEditArea && activeMode) {
+            let html = '<div class="mode-edit-fields">' +
+                '<div class="mode-field"><label>Name</label><input type="text" class="mode-name-input" data-modefield="name" value="' + attr(activeMode.name) + '" placeholder="/plan"></div>' +
+                '<div class="mode-field"><label>Summary</label><input type="text" class="mode-summary-input" data-modefield="summary" value="' + attr(activeMode.summary || '') + '" placeholder="Brief description of this mode"></div>' +
+            '</div>';
+            // Flags
+            html += '<div class="mode-flags"><div class="mode-flags-header"><span>Flags</span><button class="slot-add" id="btnAddFlag">+ Add Flag</button></div>';
+            (activeMode.flags || []).forEach((f, fi) => {
+                html += '<div class="mode-flag-row">' +
+                    '<input type="text" class="flag-name-input" data-flagindex="' + fi + '" data-flagfield="name" value="' + attr(f.name) + '" placeholder="--flag-name">' +
+                    '<input type="text" class="flag-desc-input" data-flagindex="' + fi + '" data-flagfield="desc" value="' + attr(f.desc || '') + '" placeholder="Description">' +
+                    '<button class="btn-icon btn-remove" data-flagremove="' + fi + '" title="Remove flag" aria-label="Remove flag">✕</button>' +
+                '</div>';
+            });
+            html += '</div>';
+            // Remove mode button (can't remove last mode)
+            if (state.modes.length > 1) {
+                html += '<button class="btn btn-remove-mode" id="btnRemoveMode">✕ Remove This Mode</button>';
+            }
+            modeEditArea.innerHTML = html;
+
+            // Add event listeners for mode editing
+            modeEditArea.querySelectorAll('[data-modefield]').forEach(inp => {
+                inp.addEventListener('input', (e) => {
+                    const field = e.target.dataset.modefield;
+                    const m = getActiveMode();
+                    if (m) { m[field] = e.target.value; updatePreview(); saveState(); renderModes(); }
+                });
+            });
+            modeEditArea.querySelectorAll('[data-flagfield]').forEach(inp => {
+                inp.addEventListener('input', (e) => {
+                    const fi = +e.target.dataset.flagindex;
+                    const field = e.target.dataset.flagfield;
+                    const m = getActiveMode();
+                    if (m && m.flags && m.flags[fi]) { m.flags[fi][field] = e.target.value; updatePreview(); saveState(); }
+                });
+            });
+            modeEditArea.querySelectorAll('[data-flagremove]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const fi = +e.target.dataset.flagremove;
+                    const m = getActiveMode();
+                    if (m && m.flags) { m.flags.splice(fi, 1); pushHistory(); renderModes(); saveState(); }
+                });
+            });
+            const addFlagBtn = modeEditArea.querySelector('#btnAddFlag');
+            if (addFlagBtn) addFlagBtn.addEventListener('click', () => {
+                const m = getActiveMode();
+                if (m) { if (!m.flags) m.flags = []; m.flags.push({ name: '', desc: '' }); pushHistory(); renderModes(); saveState(); }
+            });
+            const removeModeBtn = modeEditArea.querySelector('#btnRemoveMode');
+            if (removeModeBtn) removeModeBtn.addEventListener('click', () => {
+                if (state.modes.length <= 1) return;
+                if (!confirm('Remove mode "' + (getActiveMode().name || 'unnamed') + '"? This will also remove all its steps.')) return;
+                removeActiveMode();
+            });
+        }
+    }
+
+    function switchMode(modeId) {
+        state.activeModeId = modeId;
+        renderModes();
+        renderTasks();
+        saveState();
+    }
+
+    function addMode() {
+        const newMode = { id: uid('mode'), name: '/new', summary: '', flags: [], nodes: [] };
+        state.modes.push(newMode);
+        state.activeModeId = newMode.id;
+        state.multiModeEnabled = true;
+        pushHistory(); renderModes(); renderTasks(); saveState();
+    }
+
+    function removeActiveMode() {
+        if (state.modes.length <= 1) return;
+        const activeMode = getActiveMode();
+        const idx = state.modes.indexOf(activeMode);
+        if (idx < 0) return;
+        state.modes.splice(idx, 1);
+        // Switch to first mode
+        state.activeModeId = state.modes[0].id;
+        pushHistory(); renderModes(); renderTasks(); saveState();
+    }
+
+    // Enable multi-mode toggle
+    btnEnableMultiMode && btnEnableMultiMode.addEventListener('click', () => {
+        state.multiModeEnabled = true;
+        // Migrate state.nodes to first mode's nodes if not already done
+        if (state.modes && state.modes[0] && state.nodes && state.nodes.length && !state.modes[0].nodes.length) {
+            state.modes[0].nodes = state.nodes;
+        }
+        pushHistory(); renderModes(); renderTasks(); saveState();
+    });
+    btnAddMode && btnAddMode.addEventListener('click', addMode);
+
     // verbosity toggle (Compact / Explicit)  [§12]
     verbosityToggle && verbosityToggle.addEventListener('click', (e) => {
         const opt = e.target.closest('[data-verb]'); if (!opt) return;
@@ -2006,6 +2392,7 @@
         if (verbosityToggle) verbosityToggle.querySelectorAll('[data-verb]').forEach(b => b.classList.toggle('active', b.dataset.verb === (state.verbosity || 'explicit')));
         renderVariables();
         renderResources();
+        renderModes();
         renderTasks();
     }
 
@@ -2066,6 +2453,12 @@
         Object.assign(s, overrides);
         // Re-id all nodes to get fresh unique IDs
         (s.nodes || []).forEach(reId);
+        // Re-id mode nodes if present
+        if (s.modes) s.modes.forEach(m => { m.id = uid('mode'); (m.nodes || []).forEach(reId); });
+        // Ensure modes consistency
+        if (!s.modes || !s.modes.length) {
+            s.modes = [{ id: uid('mode'), name: '/default', summary: 'Default mode', flags: [], nodes: s.nodes || [] }];
+        }
         return s;
     }
 
@@ -2241,6 +2634,7 @@
         state = deepClone(tpl.state);
         (state.nodes || []).forEach(reId);
         state.schema = SCHEMA;
+        migrateSchema6(state);
         pushHistory();
         updateAllUI();
         saveState();
@@ -2256,6 +2650,7 @@
         state = Object.assign(defaultState(), deepClone(tpl.state));
         (state.nodes || []).forEach(reId);
         state.schema = SCHEMA;
+        migrateSchema6(state);
         pushHistory();
         updateAllUI();
         saveState();
@@ -2294,7 +2689,7 @@
             reader.onload = (ev) => {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.name || !data.state || !Array.isArray(data.state.nodes)) {
+                    if (!data.name || !data.state || (!Array.isArray(data.state.nodes) && !Array.isArray(data.state.modes))) {
                         showToast('⚠️ Invalid template file');
                         return;
                     }
@@ -2327,7 +2722,7 @@
 
     function getWorkflows() { try { return JSON.parse(localStorage.getItem(WORKFLOWS_KEY)) || []; } catch (e) { return []; } }
     function setWorkflows(w) { try { localStorage.setItem(WORKFLOWS_KEY, JSON.stringify(w)); } catch (e) {} }
-    function validWorkflow(w) { return w && typeof w.name === 'string' && w.state && Array.isArray(w.state.nodes); }
+    function validWorkflow(w) { return w && typeof w.name === 'string' && w.state && (Array.isArray(w.state.nodes) || Array.isArray(w.state.modes)); }
 
     function renderWorkflowList() {
         const ws = getWorkflows();
@@ -2354,7 +2749,9 @@
     function loadWorkflow(name) {
         const w = getWorkflows().find(x => x.name === name);
         if (!validWorkflow(w)) { showToast('⚠️ Workflow is corrupt'); return; }
-        state = deepClone(w.state); pushHistory(); updateAllUI(); saveState(); showToast('Loaded "' + name + '"');
+        state = deepClone(w.state);
+        migrateSchema6(state);
+        pushHistory(); updateAllUI(); saveState(); showToast('Loaded "' + name + '"');
     }
     btnSaveWorkflow.addEventListener('click', () => {
         const name = workflowNameInput.value.trim();
@@ -2444,5 +2841,5 @@
     renderTemplateList();
     renderWorkflowList();
     pushHistory();
-    console.log('Prompt Generator (tree model, schema 5) ready');
+    console.log('Prompt Generator (tree model, schema 6) ready');
 })();

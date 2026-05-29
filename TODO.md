@@ -535,41 +535,42 @@
 
 ### 8.1 MODE + FLAG (Top-Level)
 
-- [❌] **P2 / §13.5 — Add multi-mode support**
+- [✅] **P2 / §13.5 — Add multi-mode support**
   - **What:** Named entry points (e.g., `/plan`, `/dev`, `/suggest`, `/analyse`), each owning its own node tree and optional flags/parameters (e.g., `--bulk`, `--no-subagent`).
-  - **Action required:**
-    1. **Model change:** Add `state.modes = [{ id, name:'/plan', summary:'', flags:[{name:'--bulk', desc:''}], nodes:[] }]` alongside or replacing the single `state.nodes`
-    2. **Keep a default single mode** for simple use; reveal mode tabs only when >1 mode exists (progressive disclosure)
-    3. **UI:** Mode tab-bar above the step list; clicking a tab swaps the rendered tree
-    4. **Add/Edit Mode dialog:** Name, summary, flags list (each with name + description)
-    5. **Output:** `## MODE: /name — <summary>` then `Flags: --bulk: <desc>`, then the mode's tree
-    6. **Flags are referenceable** inside IF conditions (e.g., `IF flag --no-subagent is set`)
-    7. **Bump SCHEMA to 4 or 5**
+  - **Action completed:**
+    1. ✅ **Model change:** Added `state.modes = [{ id, name:'/default', summary, flags:[{name, desc}], nodes:[] }]` alongside `state.nodes`; `state.nodes` and `modes[0].nodes` share the same reference when multi-mode is off
+    2. ✅ **Progressive disclosure:** When only 1 default mode exists with no flags, the Modes card is collapsed and shows an "Enable multi-mode" button. Full mode tabs and editing UI are revealed only when multi-mode is enabled.
+    3. ✅ **UI:** Mode tab-bar in the Modes card; clicking a tab switches the active mode and re-renders the task list with that mode's nodes. Active tab is highlighted.
+    4. ✅ **Mode editing:** Each mode has name, summary, and flags list (each with name + description inputs). Add/Remove flag and Add/Remove mode buttons.
+    5. ✅ **Pseudo-code output:** `MODE: /name — summary` then `Flag: --flag: description` for each flag, then `STEPS` and the mode's tree. Single default mode output is unchanged (backward compatible).
+    6. ✅ **Markdown output:** `## Mode: /name — summary` then flags list, then task tree for each mode.
+    7. ✅ **SCHEMA bumped to 6** with `migrateSchema6()` that moves `state.nodes` to `state.modes[0].nodes` for backward compatibility
+    8. ✅ **Helper functions:** `getActiveModeNodes()`, `getActiveMode()`, `isSingleDefaultMode()`, `defaultMode()`
+    9. ✅ All tree operations (add, remove, move, find, walk, etc.) use `getActiveModeNodes()` when multi-mode is enabled
+    10. ✅ Validation validates all modes' nodes when multi-mode is enabled
+    11. ✅ CSS: `.mode-tab`, `.mode-tab.active`, `.mode-edit-fields`, `.mode-flag-row`, `.modes-collapsed`
   - **Priority:** MEDIUM — needed for multi-mode agent specs
   - **Files:** `script.js`, `index.html`, `style.css`
 
 ### 8.2 ROUTE Node (Intent Dispatch)
 
-- [❌] **§13.4 — Add `route` container node**
+- [✅] **§13.4 — Add `route` container node**
   - **What:** A labeled multi-branch switch that dispatches based on user intent or request type. Essentially a typed IF with named cases.
-  - **Action required:**
-    1. **Factory:**
-       ```js
-       { id, type:'route', on:'user intent',
-         cases: [ { label:'', match:'', children:[] } ],
-         default: [],
-         collapsed: false }
-       ```
-    2. **Slots:** One per case + `default` (like IF's elseifs + else)
-    3. **Render:** Card with:
-       - "Dispatch based on" input
-       - List of cases, each with label + match pattern + slot for children
-       - "Otherwise" default slot
-       - + Add Case / ✕ Remove Case buttons
-    4. **Pseudo-code (Compact):** `N. ROUTE on <on>:\n  case "<label>" → …\n  default → …`
-    5. **Pseudo-code (Explicit):** `DECIDE based on <on>:\n  If the request is "<label>" (<match>): …\n  Otherwise: …`
-    6. **Add to `CONTAINER_TYPES`, `makeNode()`, `slotsOf()`, `getSlotArr()`, `buildSlots()`, `pseudoNode()`, `mdNode()`**
-    7. **Add "🔀 Route" button to the add-buttons bar**
+  - **Action completed:**
+    1. ✅ **Factory:** `makeRoute()` creates `{ id, type:'route', on:'user intent', cases:[{label, match, children}], defaultCase:[], collapsed:false }`
+    2. ✅ **Added `'route'` to `CONTAINER_TYPES`**
+    3. ✅ **Slots:** One per case (`case:0`, `case:1`, …) + `default` slot; updated `slotsOf()` and `getSlotArr()` to handle route type
+    4. ✅ **Card rendering:** `routeHead()` renders "🔀 Route — Intent Dispatch" label, "Dispatch based on" input, list of cases with label + match pattern inputs, "+ Add Case" button
+    5. ✅ **buildSlots()** creates case blocks with drop zones and a default "Otherwise" block
+    6. ✅ **Pseudo-code (Compact):** `N. ROUTE on <on>:` then `case "<label>" →` for each case + `default →`
+    7. ✅ **Pseudo-code (Explicit):** `DECIDE based on <on>:` then `If the request matches "<label>" ("<match>"):` for each case + `Otherwise:`
+    8. ✅ **Markdown output:** `**N. ROUTE** on \`<on>\`:` then each case as sub-item with children
+    9. ✅ **Added `ROUTE` and `DECIDE` keywords** to `highlight()` regex
+    10. ✅ **CSS:** Indigo accent (`--route-color: #6366f1`, `--route-light: #eef2ff`, `--route-border: #a5b4fc`), `.card-route`, `.label-route`, `.branch-route`, dark theme variants
+    11. ✅ **Added "🔀 Route" button** to the add-buttons bar and inline add bars
+    12. ✅ **Validation:** Route must have at least 1 case; each case should have a label; `on` field should not be empty
+    13. ✅ **Event handling:** Input handlers for `case_label` and `case_match` fields; click handlers for `addCase` and `removeCase`
+    14. ✅ **Migration:** `migrateSchema6Nodes()` ensures route nodes have `cases`, `defaultCase`, and `on` fields
   - **Priority:** MEDIUM — cleanly models request-type dispatching
   - **Files:** `script.js`, `index.html`, `style.css`
 
@@ -625,8 +626,8 @@
 | 🟢 P3 | Additional task sub-types (PLAN, LOG, etc.) | 7 | Medium | ✅ |
 | 🟢 P3 | R5 — Keyboard reorder (Alt+↑/↓) | 8 | Small | ✅ |
 | 🟢 P3 | Table content node | 8 | Medium | ✅ |
-| 🔵 P4 | MODE + FLAG support | 8 | Large | ❌ |
-| 🔵 P4 | ROUTE node | 8 | Medium | ❌ |
+| 🔵 P4 | MODE + FLAG support | 8 | Large | ✅ |
+| 🔵 P4 | ROUTE node | 8 | Medium | ✅ |
 
 ---
 
