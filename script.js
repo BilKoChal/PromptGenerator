@@ -341,6 +341,7 @@
             explicitSuffix: '.',
             capsStyle: 'brackets',                 // 'brackets' | 'inline' | 'none'
             capWords: { agentic: 'agentic', subagent: 'can-spawn-subagents', verbose: 'verbose', strict: 'strict' },
+            capDesc: { agentic: 'perform iterative, autonomous tasks', subagent: 'may spawn sub-agents for parallel subtasks', verbose: 'explain your reasoning', strict: 'follow instructions exactly' },
             // [S4] per-preset full text, keyed by the short label shown in the dropdown
             presets: {
                 'Senior Software Engineer': 'Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)',
@@ -364,7 +365,7 @@
         context: { compactLabel: 'CONTEXT', explicitLabel: 'CONTEXT', projectKey: 'project', stackKey: 'stack', rulesKey: 'rules', outputKey: 'output', mdHeading: 'Context & Constraints' },
         vars: { compactLabel: 'VARS', explicitHeading: 'VARIABLES (use ${name} to reference in steps)', mdHeading: 'Variables' },
         resources: { compactLabel: 'RESOURCES (referenced below by @name):', explicitLeadIn: 'The following resources are available; reference them with @name.', mdHeading: 'Resources' },
-        memory: { label: 'MEMORY', instruction: 'Save this entire prompt as "{file}" and re-read it at the start of every new request. Never discard or summarize it.' },
+        memory: { label: 'MEMORY', instruction: 'Save this entire prompt as "{file}" and re-read it at the start of every new request. Never discard or summarize it.', compactInstruction: 'save as "{file}", re-read it before every request' },
         mode: { compactLabel: 'MODE', flagLabel: 'Flag', stepsLabel: 'STEPS', emptyStepsLabel: '(no steps)', mdTasksLead: 'Perform the following in order:', mdEmptyLabel: '(no tasks defined)' },
         // Verbs derived from TASK_TYPES so they never desync; still overridable individually.
         verbs: Object.fromEntries(TASK_TYPES.map(t => [t.value, t.verb])),
@@ -596,9 +597,24 @@
     // ──────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────
+    // Reverse-lookup the preset key from a stored full-text role value.
+    function roleKeyFromValue(val) {
+        const presets = DEFAULT_SETTINGS.role.presets;
+        for (const k in presets) { if (presets[k] === val) return k; }
+        return null;
+    }
     function getEffectiveRole() {
         if (state.roleSelectValue === 'custom') return state.customRole.trim() || 'Assistant';
+        const key = roleKeyFromValue(state.roleSelectValue);
+        if (key) return getSetting('role.presets.' + key);   // [S4] honour user-customized preset text
         return state.roleSelectValue;
+    }
+    // Short label for Compact mode (e.g. "Frontend Developer" without the parenthetical).
+    function getRoleShortLabel() {
+        if (state.roleSelectValue === 'custom') return state.customRole.trim() || 'Assistant';
+        const key = roleKeyFromValue(state.roleSelectValue);
+        if (key) return key;
+        return String(getEffectiveRole()).replace(/\s*\(.*\)\s*$/, '');
     }
     function escapeHtml(str) { const d = document.createElement('div'); d.textContent = str == null ? '' : str; return d.innerHTML; }
     function attr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
@@ -675,47 +691,80 @@
 
     function headerLines() {
         const role = getEffectiveRole();
-        const caps = [];
-        if (state.agentic) caps.push('agentic');
-        if (state.subagent) caps.push('can-spawn-subagents');
-        if (state.verbose) caps.push('verbose');
-        if (state.strict) caps.push('strict');
+        const roleShort = getRoleShortLabel();
+        const capKeys = [];
+        if (state.agentic) capKeys.push('agentic');
+        if (state.subagent) capKeys.push('subagent');
+        if (state.verbose) capKeys.push('verbose');
+        if (state.strict) capKeys.push('strict');
         const ctx = [];
-        if (state.contextProject.trim()) ctx.push('project=' + state.contextProject.trim());
-        if (state.contextTech.trim())    ctx.push('stack=' + state.contextTech.trim());
-        if (state.contextConstraints.trim()) ctx.push('rules=' + state.contextConstraints.trim());
-        if (state.contextOutput) ctx.push('output=' + state.contextOutput);
+        if (state.contextProject.trim()) ctx.push({ label: getSetting('context.projectKey'), value: state.contextProject.trim() });
+        if (state.contextTech.trim())    ctx.push({ label: getSetting('context.stackKey'), value: state.contextTech.trim() });
+        if (state.contextConstraints.trim()) ctx.push({ label: getSetting('context.rulesKey'), value: state.contextConstraints.trim() });
+        if (state.contextOutput) ctx.push({ label: getSetting('context.outputKey'), value: state.contextOutput });
         const vars = (state.variables || []).filter(v => v.name.trim());
-        return { role, caps, ctx, vars };
+        return { role, roleShort, capKeys, ctx, vars };
     }
 
     // ---- Pseudo-code (token-lean) ----
     function generatePseudo() {
         const h = headerLines();
-        let out = 'ROLE: ' + h.role + (h.caps.length ? '  [' + h.caps.join(', ') + ']' : '') + '\n';
-        if (h.vars.length) out += 'VARS: ' + h.vars.map(v => v.name + '=' + (v.value || '?')).join('; ') + '\n';
-        if (h.ctx.length) out += 'CONTEXT: ' + h.ctx.join('; ') + '\n';
+        const exp = isExplicit();
+        let out = '';
+        // ROLE  [V1]
+        if (exp) {
+            out = getSetting('role.label') + ': ' + getSetting('role.explicitPrefix') + h.role + getSetting('role.explicitSuffix') + '\n';
+            if (h.capKeys.length) {
+                out += '  Operates as: ' + h.capKeys.map(k => getSetting('role.capWords.' + k) + ' — ' + getSetting('role.capDesc.' + k)).join('; ') + '.\n';
+            }
+        } else {
+            out = getSetting('role.label') + ': ' + h.roleShort + (h.capKeys.length ? '  [' + h.capKeys.map(k => getSetting('role.capWords.' + k)).join(', ') + ']' : '') + '\n';
+        }
+        // VARS  [V3]
+        if (h.vars.length) {
+            if (exp) {
+                out += getSetting('vars.explicitHeading') + '\n';
+                h.vars.forEach(v => { out += '  ' + v.name + ' = ' + (v.value || '?') + '\n'; });
+            } else {
+                out += getSetting('vars.compactLabel') + ': ' + h.vars.map(v => v.name + '=' + (v.value || '?')).join('; ') + '\n';
+            }
+        }
+        // CONTEXT  [V2]
+        if (h.ctx.length) {
+            if (exp) {
+                out += getSetting('context.explicitLabel') + ':\n';
+                h.ctx.forEach(c => { out += '  ' + c.label + ': ' + c.value + '\n'; });
+            } else {
+                out += getSetting('context.compactLabel') + ': ' + h.ctx.map(c => c.label + '=' + c.value).join('; ') + '\n';
+            }
+        }
+        // MEMORY
         if (state.memoryDirective) {
-            out += 'MEMORY: Save this entire prompt as "' + (state.memoryFile || 'AGENT_PROMPT.md') + '" and re-read it at the start of every new request. Never discard or summarize it.\n';
+            const f = state.memoryFile || 'AGENT_PROMPT.md';
+            out += getSetting('memory.label') + ': ' + fill(getSetting(exp ? 'memory.instruction' : 'memory.compactInstruction'), { file: f }) + '\n';
         }
         out += resourcesPseudo();
-        // Multi-mode output
+        // Multi-mode output  [V5]
+        const stepsLabel = getSetting('mode.stepsLabel');
+        const emptyLabel = '  ' + getSetting('mode.emptyStepsLabel');
         if (state.multiModeEnabled && state.modes && state.modes.length > 0) {
-            state.modes.forEach((mode, mi) => {
-                out += '\nMODE: ' + mode.name + (mode.summary ? ' — ' + mode.summary : '') + '\n';
+            state.modes.forEach((mode) => {
+                out += '\n' + getSetting('mode.compactLabel') + ': ' + mode.name + (exp && mode.summary ? ' — ' + mode.summary : '') + '\n';
                 if (mode.flags && mode.flags.length) {
                     mode.flags.forEach(f => {
-                        out += '  Flag: ' + f.name + (f.desc ? ': ' + f.desc : '') + '\n';
+                        out += exp
+                            ? '  ' + getSetting('mode.flagLabel') + ': ' + f.name + (f.desc ? ': ' + f.desc : '') + '\n'
+                            : '  ' + f.name + '\n';
                     });
                 }
-                out += 'STEPS\n';
-                if (!mode.nodes || !mode.nodes.length) out += '  (no steps)\n';
+                out += stepsLabel + '\n';
+                if (!mode.nodes || !mode.nodes.length) out += emptyLabel + '\n';
                 else mode.nodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
             });
         } else {
-            out += '\nSTEPS\n';
+            out += '\n' + stepsLabel + '\n';
             const activeNodes = getActiveModeNodes();
-            if (!activeNodes.length) out += '  (no steps)\n';
+            if (!activeNodes.length) out += emptyLabel + '\n';
             else activeNodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
         }
         return out.replace(/\n+$/, '') + '\n';
@@ -723,7 +772,8 @@
     function resourcesPseudo() {
         const rs = (state.resources || []).filter(r => r.name && r.name.trim());
         if (!rs.length) return '';
-        let out = '\nRESOURCES (referenced below by @name):\n';
+        let out = '\n' + getSetting('resources.compactLabel') + '\n';
+        if (isExplicit()) out += '  ' + getSetting('resources.explicitLeadIn') + '\n';
         rs.forEach(r => {
             const v = r.kind === 'text' ? '(text inlined below)' : (r.value || '<empty>');
             out += '  @' + r.name.trim() + '  [' + r.kind + ']' + (r.note ? ' — ' + r.note : (r.value && r.kind !== 'text' ? ' — ' + r.value : '')) + '\n';
@@ -841,14 +891,15 @@
         }
         if (n.type === 'gate') {
             const prompt = n.prompt ? interp(n.prompt) : '<confirmation prompt?>';
+            const rejectWord = getSetting('gate.rejectWord');
             if (isExplicit()) {
-                let s = ind + '>>> STOP. Wait for explicit user confirmation before continuing. Do NOT proceed past this point until the user replies. <<<\n';
-                s += ind + num + '. Confirm: ' + prompt + '\n';
-                if (n.onReject && n.onReject.trim()) s += ind + '   If rejected: ' + interp(n.onReject).trim() + '\n';
+                let s = ind + '>>> ' + getSetting('gate.explicitStopWord') + '. ' + getSetting('gate.explicitInstruction') + ' <<<\n';
+                s += ind + num + '. ' + getSetting('gate.confirmWord') + ': ' + prompt + '\n';
+                if (n.onReject && n.onReject.trim()) s += ind + '   ' + rejectWord + ': ' + interp(n.onReject).trim() + '\n';
                 return s;
             }
-            let s = ind + num + '. GATE — ' + prompt + '\n';
-            if (n.onReject && n.onReject.trim()) s += ind + '   If rejected: ' + interp(n.onReject).trim() + '\n';
+            let s = ind + num + '. ' + getSetting('gate.compactLabel') + ' — ' + prompt + '\n';
+            if (n.onReject && n.onReject.trim()) s += ind + '   ' + rejectWord + ': ' + interp(n.onReject).trim() + '\n';
             return s;
         }
         if (n.type === 'ask') {
@@ -1034,45 +1085,57 @@
     // ---- Markdown (human-friendly) ----
     function generateMarkdown() {
         const h = headerLines();
-        let md = '# Agent Prompt\n\n## Role\nYou are a **' + h.role + '**.\n';
-        if (state.agentic)  md += '- **agentic** — perform iterative, autonomous tasks.\n';
-        if (state.subagent) md += '- may **spawn sub-agents** for parallel subtasks.\n';
-        if (state.verbose)  md += '- **verbose** — explain reasoning.\n';
-        if (state.strict)   md += '- **strict** — follow instructions exactly.\n';
-        if (h.vars.length) { md += '\n## Variables\n'; h.vars.forEach(v => md += '- `' + v.name + '` = ' + (v.value || '_(unset)_') + '\n'); }
-        if (h.ctx.length)  { md += '\n## Context & Constraints\n'; h.ctx.forEach(c => md += '- ' + c.replace('=', ': ') + '\n'); }
+        const exp = isExplicit();
+        let md = '# Agent Prompt\n\n## ' + cap1(getSetting('role.label')) + '\n';
+        if (exp) {
+            md += 'You are a **' + h.role + '**.\n';
+            h.capKeys.forEach(k => { md += '- **' + getSetting('role.capWords.' + k) + '** — ' + getSetting('role.capDesc.' + k) + '.\n'; });
+        } else {
+            md += '**' + h.roleShort + '**' + (h.capKeys.length ? ' _(' + h.capKeys.map(k => getSetting('role.capWords.' + k)).join(', ') + ')_' : '') + '\n';
+        }
+        if (h.vars.length) {
+            if (exp) { md += '\n## ' + getSetting('vars.mdHeading') + '\n'; h.vars.forEach(v => md += '- `' + v.name + '` = ' + (v.value || '_(unset)_') + '\n'); }
+            else md += '\n**' + getSetting('vars.compactLabel') + ':** ' + h.vars.map(v => '`' + v.name + '`=' + (v.value || '?')).join('; ') + '\n';
+        }
+        if (h.ctx.length) {
+            if (exp) { md += '\n## ' + getSetting('context.mdHeading') + '\n'; h.ctx.forEach(c => md += '- ' + c.label + ': ' + c.value + '\n'); }
+            else md += '\n**' + getSetting('context.compactLabel') + ':** ' + h.ctx.map(c => c.label + '=' + c.value).join('; ') + '\n';
+        }
         if (state.memoryDirective) {
-            md += '\n## Memory Directive\nSave this entire prompt as `' + (state.memoryFile || 'AGENT_PROMPT.md') + '` and re-read it at the start of every new request. Never discard or summarize it.\n';
+            const f = state.memoryFile || 'AGENT_PROMPT.md';
+            if (exp) md += '\n## Memory Directive\n' + fill(getSetting('memory.instruction'), { file: f }) + '\n';
+            else md += '\n**' + getSetting('memory.label') + ':** ' + fill(getSetting('memory.compactInstruction'), { file: f }) + '\n';
         }
         md += resourcesMd();
-        // Multi-mode output
+        // Multi-mode output  [V5]
+        const tasksLead = getSetting('mode.mdTasksLead');
+        const emptyTasks = '_' + getSetting('mode.mdEmptyLabel') + '_';
         if (state.multiModeEnabled && state.modes && state.modes.length > 0) {
-            state.modes.forEach((mode, mi) => {
-                md += '\n## Mode: ' + mode.name + (mode.summary ? ' — ' + mode.summary : '') + '\n\n';
+            state.modes.forEach((mode) => {
+                md += '\n## ' + cap1(getSetting('mode.compactLabel')) + ': ' + mode.name + (exp && mode.summary ? ' — ' + mode.summary : '') + '\n\n';
                 if (mode.flags && mode.flags.length) {
-                    md += '**Flags:**\n';
-                    mode.flags.forEach(f => {
-                        md += '- `' + f.name + '`' + (f.desc ? ': ' + f.desc : '') + '\n';
-                    });
+                    md += '**' + getSetting('mode.flagLabel') + 's:**\n';
+                    mode.flags.forEach(f => { md += '- `' + f.name + '`' + (exp && f.desc ? ': ' + f.desc : '') + '\n'; });
                     md += '\n';
                 }
-                md += 'Perform the following in order:\n\n';
-                if (!mode.nodes || !mode.nodes.length) md += '_(no tasks defined)_\n';
+                md += tasksLead + '\n\n';
+                if (!mode.nodes || !mode.nodes.length) md += emptyTasks + '\n';
                 else mode.nodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
             });
         } else {
-            md += '\n## Tasks\nPerform the following in order:\n\n';
+            md += '\n## Tasks\n' + tasksLead + '\n\n';
             const activeNodes = getActiveModeNodes();
-            if (!activeNodes.length) md += '_(no tasks defined)_\n';
+            if (!activeNodes.length) md += emptyTasks + '\n';
             else activeNodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
         }
         md += '\n---\n_Generated with Prompt Generator_\n';
         return md;
     }
+    function cap1(s) { s = String(s); return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(); }
     function resourcesMd() {
         const rs = (state.resources || []).filter(r => r.name && r.name.trim());
         if (!rs.length) return '';
-        let md = '\n## Resources\nReference these below with `@name`.\n';
+        let md = '\n## ' + getSetting('resources.mdHeading') + '\n' + getSetting('resources.explicitLeadIn') + '\n';
         rs.forEach(r => {
             md += '- `@' + r.name.trim() + '` (' + r.kind + ')' +
                   (r.kind !== 'text' && r.value ? ' — ' + r.value : '') +
@@ -1156,8 +1219,9 @@
         }
         if (n.type === 'gate') {
             const prompt = n.prompt ? interp(n.prompt) : '(not specified)';
-            let s = ind + '- **' + num + '. GATE:** ' + prompt + '\n';
-            if (n.onReject && n.onReject.trim()) s += ind + '  - _If rejected:_ ' + interp(n.onReject).trim() + '\n';
+            let s = ind + '- **' + num + '. ' + getSetting('gate.compactLabel') + ':** ' + prompt + '\n';
+            if (isExplicit()) s += ind + '  - _' + getSetting('gate.explicitStopWord') + ':_ ' + getSetting('gate.explicitInstruction') + '\n';
+            if (n.onReject && n.onReject.trim()) s += ind + '  - _' + getSetting('gate.rejectWord') + ':_ ' + interp(n.onReject).trim() + '\n';
             return s;
         }
         if (n.type === 'ask') {

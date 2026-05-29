@@ -17,6 +17,65 @@
 
 ---
 
+## ⚠️ Verification Pass — 2026-05-30 (automated code review)
+
+> The codebase was cloned and the output generators were **executed headlessly** (jsdom)
+> against trees covering every node type, in all four output modes (pseudo/markdown ×
+> explicit/compact). Findings below correct several stale statuses in this file.
+
+**Phases 1–8 spot-check: solid.** Section/Phase, Gate, Route, Table, Package, Loop
+(`maxIterations` + `exitCondition`), break/continue validation, GOTO (incl. targeting a
+section), Variables interpolation, token estimate, and the validation badge all produced
+correct output when run. Pseudo-code verbosity (Explicit vs Compact) genuinely differs.
+
+**Corrections to previously-recorded statuses:**
+
+1. **BUG-F1 (`agent.agentic`)** was marked ⬜ — it is actually **done in pseudo-code**
+   (emits `(agentic)`), but still **missing in Markdown**. → now 🔶.
+2. **BUG-F3 (`q.suggestDefault`)** was marked ⬜ — it is actually **done in pseudo-code
+   Explicit** ("Suggest best-practice default."), but **missing in pseudo Compact and in
+   Markdown**. → now 🔶.
+3. **BUG-F2 (`agent.verbose`)** is worse than recorded: the checkbox is **not rendered in
+   the UI at all** (only `agentic`, `isPrimary` are), and the field is read nowhere. It is
+   a fully dead field. → still ❌, description corrected.
+4. The **BUG-F4 audit table** had wrong rows for the three fields above (claimed "NOT USED
+   in BOTH") — corrected inline.
+
+**Newly discovered bugs (were not tracked):** see **BUG-F5** (IF/ELSE-IF/ELSE branch
+numbering collision) and **BUG-F6** (`${itemVar}` shows UNDEFINED inside loop body) added
+to §9.3.
+
+**V6 confirmed accurate:** Markdown output is byte-identical in Explicit vs Compact for
+structural nodes (only the leaf sub-type tasks vary) — the ⬜ is correct.
+
+---
+
+## 🛠️ Progress — 2026-05-30 (settings foundation + header/gate slice)
+
+> Implemented and verified end-to-end (jsdom: overriding a setting changes the output).
+
+- **S1 — Settings data model:** ✅ done. `DEFAULT_SETTINGS` (single source of truth for every
+  component's output text), `getSetting(path)` (override → default, partial-path safe),
+  `fill(tpl, vars)` for templates. Verbs derived from `TASK_TYPES` so they never desync.
+- **S6 — Persistence:** ✅ load/save done. Separate `prompt_generator_settings` key;
+  `loadSettings()` called at boot after `loadState()`; `saveSettings()` debounced.
+- **S3 — Connect settings to generators:** 🔶 partial. Done: the whole **header**
+  (ROLE, VARS, CONTEXT, MEMORY, RESOURCES label, MODE/STEPS labels) and the **GATE** node, in
+  **both** pseudo and Markdown. Remaining: task verbs (`getVerb`), and the remaining nodes
+  (loop, if, route, section, subagent, parallel, ask, table, package).
+- **S4 — Role presets:** 🔶 resolution path done — `getEffectiveRole()` now reads
+  `getSetting('role.presets.<key>')`, so customizing a preset already changes output. The
+  editing UI for presets is part of S2 (modal), still ⬜.
+- **V1 ROLE / V2 CONTEXT / V3 VARS / V5 MODE:** ✅ Compact vs Explicit now genuinely differ
+  (compact = terse one-liners; explicit = labelled blocks / full sentences).
+- **V4 RESOURCES:** 🔶 label + explicit lead-in wired; richer explicit body still optional.
+- **V6 (Markdown node explicit):** 🔶 GATE done in Markdown; other containers still pending.
+
+**Next:** S3 sweep over the remaining nodes (start with `getVerb`/task verbs), then S2 (the
+settings modal UI), then S5 (import/export).
+
+---
+
 ## Phase 1 — Foundation (Core Model Rebuild)
 
 > **Goal:** Replace the flat string-body model with a recursive node tree, fix cheap bugs,
@@ -82,7 +141,7 @@
 
 - [✅] **B8 — Update README filenames and storage key references**
   - **What:** README referenced `styles.css` / `app.js` and storage key `_v3`.
-  - **Current state:** 🔶 README has been partially updated but `R3` below is still open.
+  - **Current state:** ✅ Done — superseded by R3 (full README rewrite), which is also complete. (Earlier note here claiming R3 was "still open" was stale.)
 
 - [✅] **B9 — Wrap placeholder in `escapeHtml()`**
   - **What:** `def.paramPlaceholder` was injected into HTML without escaping.
@@ -706,32 +765,30 @@
 
 ### 9.3 BUG: Fields That Don't Affect Output
 
-- [⬜] **BUG-F1 — Sub-agent `agentic` checkbox not used in output**
-  - **What:** The `agentic` checkbox on each sub-agent is rendered in the UI (`buildSlots()`) and stored in `makeAgent()` but is NEVER read by `pseudoNode()` or `mdNode()`. Users set it expecting it to change the output.
-  - **Fix:**
-    - **Pseudo-code (Compact):** Show `(agentic)` tag after agent name if `a.agentic === true`
-    - **Pseudo-code (Explicit):** Add "This agent operates autonomously (agentic mode) — it should iterate on its own until the task is complete." when `a.agentic`
-    - **Markdown:** Add `_agentic_` label on the agent line
-  - **Priority:** MEDIUM — user expectation mismatch
+- [🔶] **BUG-F1 — Sub-agent `agentic` checkbox: done in pseudo, MISSING in markdown**
+  - **VERIFIED 2026-05-30:** `pseudoNode()` **does** emit `(agentic)` after the agent name (both Compact and Explicit). However `mdNode()`'s subagent branch never reads `a.agentic`, so it is absent from Markdown output. Previously recorded as ⬜ (not done at all) — that was stale.
+  - **Remaining fix (Markdown only):**
+    - Add `_agentic_` label on the agent line in `mdNode()`.
+    - Optional: in Explicit pseudo, expand to a full sentence rather than just `(agentic)`.
+  - **Priority:** MEDIUM — parity between the two output modes
+  - **Files:** `script.js` — `mdNode()` subagent branch
+
+- [❌] **BUG-F2 — Sub-agent `verbose` is a fully dead field (not rendered AND not output)**
+  - **VERIFIED 2026-05-30:** Worse than previously recorded. `makeAgent()` stores `verbose: false`, but `buildSlots()` renders **no `verbose` checkbox** for agents (only `agentic` and `isPrimary` are rendered — grep `data-field="verbose"` returns nothing). The field is also read by neither `pseudoNode()` nor `mdNode()`. So users can never set it and it never affects output. The earlier claim that "the checkbox is rendered and stored" is incorrect.
+  - **Fix (two parts):**
+    1. **UI:** Add a `verbose` checkbox to the agent block in `buildSlots()` (next to `agentic`).
+    2. **Output:** Read `a.verbose` in both `pseudoNode()` and `mdNode()` (e.g. `(verbose)` tag / Explicit sentence / `_verbose_` label).
+    - Alternatively, if `verbose` is not wanted, remove it from `makeAgent()` to avoid a dangling field.
+  - **Priority:** MEDIUM — dead field; decide to wire-up or remove
   - **Files:** `script.js`
 
-- [⬜] **BUG-F2 — Sub-agent `verbose` checkbox not used in output**
-  - **What:** The `verbose` checkbox on each sub-agent is rendered and stored but NEVER read in output generation.
-  - **Fix:**
-    - **Pseudo-code (Compact):** Show `(verbose)` tag if `a.verbose === true`
-    - **Pseudo-code (Explicit):** Add "This agent must explain its reasoning step by step." when `a.verbose`
-    - **Markdown:** Add `_verbose_` label
-  - **Priority:** MEDIUM — user expectation mismatch
-  - **Files:** `script.js`
-
-- [⬜] **BUG-F3 — ASK `suggestDefault` checkbox not used in output**
-  - **What:** The "Suggest best practice" checkbox on each ASK question is rendered and stored but NEVER read in output.
-  - **Fix:**
-    - **Pseudo-code (Compact):** Add `(suggest default)` after the question
-    - **Pseudo-code (Explicit):** Add "If the user is unsure, suggest the best-practice default answer." when `q.suggestDefault`
-    - **Markdown:** Add a note line
-  - **Priority:** LOW — minor but inconsistent
-  - **Files:** `script.js`
+- [🔶] **BUG-F3 — ASK `suggestDefault`: done in pseudo Explicit, MISSING in Compact + Markdown**
+  - **VERIFIED 2026-05-30:** `pseudoNode()` Explicit branch **does** emit "Suggest best-practice default." for `q.suggestDefault`. However it is **omitted in pseudo Compact**, and `mdNode()`'s ask branch never reads `q.suggestDefault`. Previously recorded as ⬜ — stale.
+  - **Remaining fix:**
+    - **Pseudo Compact:** add a `(suggest default)` marker after the question.
+    - **Markdown:** add a note line when `q.suggestDefault`.
+  - **Priority:** LOW — minor but inconsistent across modes
+  - **Files:** `script.js` — `pseudoNode()` (compact ask), `mdNode()` (ask)
 
 - [⬜] **BUG-F4 — Audit ALL input fields for output coverage**
   - **What:** Ensure every single input field that is rendered in the editor actually affects the generated output in BOTH pseudo-code AND markdown modes.
@@ -774,8 +831,8 @@
     | Sub-agent | execMode | ✅ | ✅ | OK |
     | Sub-agent | agent.role | ✅ | ✅ | OK |
     | Sub-agent | agent.task | ✅ | ✅ | OK |
-    | Sub-agent | agent.agentic | ❌ NOT USED | ❌ NOT USED | **FIX** |
-    | Sub-agent | agent.verbose | ❌ NOT USED | ❌ NOT USED | **FIX** |
+    | Sub-agent | agent.agentic | ✅ | ❌ NOT in MD | **FIX MD (BUG-F1)** |
+    | Sub-agent | agent.verbose | ❌ + not rendered | ❌ | **DEAD FIELD (BUG-F2)** |
     | Sub-agent | agent.domain | ✅ | ✅ | OK |
     | Sub-agent | agent.rationale | ✅ | ✅ | OK |
     | Sub-agent | agent.outputFile | ✅ | ✅ | OK |
@@ -785,7 +842,7 @@
     | Ask | q.kind | ✅ | ✅ | OK |
     | Ask | q.options | ✅ | ✅ | OK |
     | Ask | q.allowOther | ✅ | ✅ | OK |
-    | Ask | q.suggestDefault | ❌ NOT USED | ❌ NOT USED | **FIX** |
+    | Ask | q.suggestDefault | ✅ Explicit / ❌ Compact | ❌ | **PARTIAL (BUG-F3)** |
     | Ask | q.saveTo | ✅ | ✅ | OK |
     | Package | archiveName/tree/filesNote | ✅ | ✅ | OK |
     | Table | caption/headers/rows | ✅ | ✅ | OK |
@@ -794,6 +851,28 @@
 
   - **Priority:** MEDIUM — completeness and user trust
   - **Files:** `script.js`
+
+- [❌] **BUG-F5 — IF / ELSE-IF / ELSE branches collide on step numbers (NEW, found 2026-05-30)**
+  - **What:** In `pseudoNode()`/`mdNode()` for the `if` node, every branch (`then`, each `elseif`, `else`) is rendered with the **same** parent number passed to `slotPseudo()`/`slotMd()`. So the first child of THEN, of ELSE-IF, and of ELSE all get the **same** number. Verified output:
+    ```
+    1.2. IF tests pass:
+      1.2.1. DEPLOY staging
+       ELSE IF flaky:
+      1.2.1. TEST retry      ← duplicate 1.2.1
+       ELSE:
+      1.2.1. DEBUG failures  ← duplicate 1.2.1
+    ```
+  - **Why it matters:** Confusing to read, and `stepNumberOf()` (used by GOTO references) cannot point unambiguously to a step inside a non-THEN branch. Note `route` does NOT have this bug — its cases get distinct numbers (`3.1`, `3.2`), so the two container types are inconsistent.
+  - **Fix idea:** Give each branch a distinct sub-number (e.g. THEN=`num.1`, ELSE-IF #k=`num.(k+1)`, ELSE=last), matching how `route` numbers cases; or render branch labels with their own index. Apply in both `pseudoNode()` and `mdNode()`.
+  - **Priority:** MEDIUM — correctness of numbering & references
+  - **Files:** `script.js` — `pseudoNode()` if-branch, `mdNode()` if-branch
+
+- [❌] **BUG-F6 — Loop `itemVar` renders as `${name:UNDEFINED}` inside the loop body (NEW, found 2026-05-30)**
+  - **What:** A `for_each` loop declares `itemVar` (e.g. `mod`), but referencing `${mod}` in a child task's target/details runs through `interp()`/`varMap()`, which only knows global Variables. The loop variable is not in scope, so it emits `${mod:UNDEFINED}`. Verified output: `IMPLEMENT ${mod:UNDEFINED} feature`.
+  - **Why it matters:** It is the natural way to use a loop variable, and the `UNDEFINED` marker makes a correct prompt look broken.
+  - **Fix idea:** When recursing into a loop body, register the loop's `itemVar` as a known name for interpolation within that subtree (treat as defined; substitute literally, or leave `${mod}` un-marked). Thread a scope set through `pseudoNode`/`mdNode`/`interp`.
+  - **Priority:** MEDIUM — common pattern, misleading output
+  - **Files:** `script.js` — `interp()`, `varMap()`, loop recursion in `pseudoNode()`/`mdNode()`
 
 ### 9.4 FEATURE: Expand Compact/Explicit Verbosity to ALL Output Sections
 
@@ -846,6 +925,7 @@
   - **Files:** `script.js`
 
 - [⬜] **V6 — Compact/Explicit for all node types in Markdown output**
+  - **VERIFIED 2026-05-30:** Confirmed real — Markdown output is byte-identical in Explicit vs Compact for all structural/container nodes (IF, LOOP, SUBAGENT, PARALLEL, ROUTE, SECTION, GATE, ASK). Only the leaf "directive" task sub-types (PLAN/LOG/SPLIT/VALIDATE/SYNTHESIZE/COMMIT) add an extra Explicit bullet. So this item is correctly ⬜.
   - **What:** The Markdown output (`mdNode()`) currently has LIMITED compact/explicit variation. Most node types output identically in both modes. Need to add explicit expansions for:
     - **IF:** Explicit should add "Evaluate the condition and follow the matching branch" prose
     - **LOOP:** Explicit should add "Iterate through the collection" / "Repeat until condition is met" prose
@@ -860,7 +940,7 @@
 
 ### 9.5 FEATURE: Settings System (LARGE)
 
-- [⬜] **S1 — Design settings data model**
+- [✅] **S1 — Design settings data model**
   - **What:** Create a `DEFAULT_SETTINGS` object that contains every customizable default string in the app. This is the single source of truth for all hardcoded output text. The user's custom settings override defaults.
   - **Model:**
     ```javascript
@@ -1034,7 +1114,7 @@
   - **Priority:** HIGH — explicitly requested by user
   - **Files:** `script.js`
 
-- [⬜] **S6 — Settings persistence and migration**
+- [🔶] **S6 — Settings persistence and migration**
   - **What:** Settings should persist in localStorage alongside the main state. When the app loads, custom settings are merged with defaults.
   - **Storage key:** `prompt_generator_settings` (separate from main state for easier import/export)
   - **Migration:** If new settings keys are added in future versions, they automatically get default values from `DEFAULT_SETTINGS` without breaking old saves.
@@ -1049,13 +1129,15 @@
 |----------|------|---------|--------|--------|
 | 🔴 P0 | BUG-M1 — Multi-mode disable button | 9.1 | Small | ✅ |
 | 🔴 P0 | BUG-M2 — Focus loss in mode Summary | 9.2 | Small | ✅ |
-| 🟠 P1 | BUG-F1 — Sub-agent agentic not in output | 9.3 | Small | ⬜ |
-| 🟠 P1 | BUG-F2 — Sub-agent verbose not in output | 9.3 | Small | ⬜ |
-| 🟠 P1 | BUG-F3 — ASK suggestDefault not in output | 9.3 | Small | ⬜ |
-| 🟠 P1 | BUG-F4 — Full audit of all fields | 9.3 | Small | ⬜ |
-| 🟠 P1 | S1 — Settings data model | 9.5 | Medium | ⬜ |
+| 🟠 P1 | BUG-F1 — Sub-agent agentic: pseudo ✅, MD missing | 9.3 | Small | 🔶 |
+| 🟠 P1 | BUG-F2 — Sub-agent verbose: dead field (no UI, no output) | 9.3 | Small | ❌ |
+| 🟠 P1 | BUG-F3 — ASK suggestDefault: pseudo-explicit ✅, rest missing | 9.3 | Small | 🔶 |
+| 🟠 P1 | BUG-F4 — Full audit of all fields (table corrected) | 9.3 | Small | 🔶 |
+| 🟠 P1 | BUG-F5 — IF/ELSE-IF/ELSE step-number collision (NEW) | 9.3 | Small | ❌ |
+| 🟠 P1 | BUG-F6 — Loop itemVar shows UNDEFINED in body (NEW) | 9.3 | Small | ❌ |
+| 🟠 P1 | S1 — Settings data model | 9.5 | Medium | ✅ |
 | 🟠 P1 | S2 — Settings modal UI | 9.5 | Large | ⬜ |
-| 🟠 P1 | S3 — Connect settings to generators | 9.5 | Large | ⬜ |
+| 🟠 P1 | S3 — Connect settings to generators | 9.5 | Large | 🔶 |
 | 🟡 P2 | V1 — Compact/Explicit for Role | 9.4 | Small | ⬜ |
 | 🟡 P2 | V2 — Compact/Explicit for Context | 9.4 | Small | ⬜ |
 | 🟡 P2 | V6 — Compact/Explicit for all node types in MD | 9.4 | Medium | ⬜ |
