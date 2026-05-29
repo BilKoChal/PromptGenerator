@@ -667,3 +667,401 @@
 | GATE node (user-confirmation barrier) | 6 | ✅ |
 | Capped revision loops (maxIterations + exitCondition) | 6 | ✅ |
 | Section GOTO targetability (verified) | 6 | ✅ |
+
+---
+
+## Phase 9 — Bug Fixes, Compact/Explicit Expansion & Settings System
+
+> **Goal:** Fix reported bugs, expand Compact/Explicit verbosity to ALL output sections (not just steps),
+> and build a comprehensive Settings system that allows users to customize every hardcoded default text
+> in the output, with global import/export.
+
+### 9.1 BUG: Multi-mode Cannot Be Disabled
+
+- [✅] **BUG-M1 — Add "Disable multi-mode" button**
+  - **What:** When multi-mode is enabled via the "🔀 Enable multi-mode" button, `state.multiModeEnabled` is set to `true`. There is no UI to set it back to `false`. Users who accidentally enable multi-mode or want to revert must reset the entire state.
+  - **Root cause:** `btnEnableMultiMode` only sets `state.multiModeEnabled = true`. No "Disable" button exists in `renderModes()`.
+  - **Fix completed:**
+    1. ✅ Added "↩ Disable multi-mode" button (`btnDisableMultiMode`) at the bottom of the mode edit area in `renderModes()`
+    2. ✅ When clicked with only 1 mode: sets `state.multiModeEnabled = false`, syncs `state.nodes = state.modes[0].nodes`, re-renders
+    3. ✅ When clicked with multiple modes: shows a confirm dialog warning that only the active mode will be kept, then removes all other modes, disables multi-mode
+    4. ✅ After disabling, the Modes card collapses back to the "Enable multi-mode" button state
+    5. ✅ Added standalone `disableMultiMode()` function for reuse
+    6. ✅ Added CSS styling for `.btn-disable-multimode` (neutral gray with red hover)
+  - **Priority:** HIGH — broken UX
+  - **Files:** `script.js`, `style.css`
+
+### 9.2 BUG: Focus Loss When Typing in Mode Summary
+
+- [✅] **BUG-M2 — Fix focus loss in mode name/summary inputs**
+  - **What:** When typing in the mode Name or Summary input fields, the `input` event handler calls `renderModes()` which re-renders the entire `modeEditArea.innerHTML`. This destroys and recreates the DOM elements, causing the text input to lose focus after every keystroke.
+  - **Root cause:** In `renderModes()`, the `input` handler for `[data-modefield]` elements calls `renderModes()` after every keystroke, which rebuilds the entire edit area DOM.
+  - **Fix completed:**
+    1. ✅ Removed `renderModes()` call from the `[data-modefield]` input handler — now only calls `updatePreview()`, `saveState()`, and directly updates the active tab text without DOM rebuild
+    2. ✅ The `[data-flagfield]` input handler was already correct (no `renderModes()` call), confirmed unchanged
+    3. ✅ Structural changes (add/remove flag, add/remove mode, switch mode) still call `renderModes()` as expected
+    4. ✅ Mode tab text updates live when name field changes (direct DOM update: `activeTab.textContent = e.target.value`)
+  - **Priority:** HIGH — broken UX, makes mode editing impossible
+  - **Files:** `script.js`
+
+### 9.3 BUG: Fields That Don't Affect Output
+
+- [⬜] **BUG-F1 — Sub-agent `agentic` checkbox not used in output**
+  - **What:** The `agentic` checkbox on each sub-agent is rendered in the UI (`buildSlots()`) and stored in `makeAgent()` but is NEVER read by `pseudoNode()` or `mdNode()`. Users set it expecting it to change the output.
+  - **Fix:**
+    - **Pseudo-code (Compact):** Show `(agentic)` tag after agent name if `a.agentic === true`
+    - **Pseudo-code (Explicit):** Add "This agent operates autonomously (agentic mode) — it should iterate on its own until the task is complete." when `a.agentic`
+    - **Markdown:** Add `_agentic_` label on the agent line
+  - **Priority:** MEDIUM — user expectation mismatch
+  - **Files:** `script.js`
+
+- [⬜] **BUG-F2 — Sub-agent `verbose` checkbox not used in output**
+  - **What:** The `verbose` checkbox on each sub-agent is rendered and stored but NEVER read in output generation.
+  - **Fix:**
+    - **Pseudo-code (Compact):** Show `(verbose)` tag if `a.verbose === true`
+    - **Pseudo-code (Explicit):** Add "This agent must explain its reasoning step by step." when `a.verbose`
+    - **Markdown:** Add `_verbose_` label
+  - **Priority:** MEDIUM — user expectation mismatch
+  - **Files:** `script.js`
+
+- [⬜] **BUG-F3 — ASK `suggestDefault` checkbox not used in output**
+  - **What:** The "Suggest best practice" checkbox on each ASK question is rendered and stored but NEVER read in output.
+  - **Fix:**
+    - **Pseudo-code (Compact):** Add `(suggest default)` after the question
+    - **Pseudo-code (Explicit):** Add "If the user is unsure, suggest the best-practice default answer." when `q.suggestDefault`
+    - **Markdown:** Add a note line
+  - **Priority:** LOW — minor but inconsistent
+  - **Files:** `script.js`
+
+- [⬜] **BUG-F4 — Audit ALL input fields for output coverage**
+  - **What:** Ensure every single input field that is rendered in the editor actually affects the generated output in BOTH pseudo-code AND markdown modes.
+  - **Full audit checklist:**
+
+    | Component | Field | Pseudo-code | Markdown | Status |
+    |-----------|-------|-------------|----------|--------|
+    | Role | roleSelectValue | ✅ | ✅ | OK |
+    | Role | customRole | ✅ | ✅ | OK |
+    | Role | agentic | ✅ | ✅ | OK |
+    | Role | subagent | ✅ | ✅ | OK |
+    | Role | verbose | ✅ | ✅ | OK |
+    | Role | strict | ✅ | ✅ | OK |
+    | Context | contextProject | ✅ | ✅ | OK |
+    | Context | contextTech | ✅ | ✅ | OK |
+    | Context | contextConstraints | ✅ | ✅ | OK |
+    | Context | contextOutput | ✅ | ✅ | OK |
+    | Memory | memoryDirective | ✅ | ✅ | OK |
+    | Memory | memoryFile | ✅ | ✅ | OK |
+    | Mode | name | ✅ | ✅ | OK |
+    | Mode | summary | ✅ | ✅ | OK |
+    | Mode | flag.name | ✅ | ✅ | OK |
+    | Mode | flag.desc | ✅ | ✅ | OK |
+    | Variable | name/value | ✅ | ✅ | OK |
+    | Resource | name/kind/value/note | ✅ | ✅ | OK |
+    | Task | action | ✅ | ✅ | OK |
+    | Task | target | ✅ | ✅ | OK |
+    | Task | details | ✅ | ✅ (only pseudo uses `//`) | OK |
+    | Task | targetType | ✅ | ✅ | OK |
+    | Task | rulesList | ✅ | ✅ | OK |
+    | Task | contentOutline | ✅ | ✅ | OK |
+    | Task | gotoRef | ✅ | ✅ | OK |
+    | If | condition | ✅ | ✅ | OK |
+    | Loop | loopType/source/itemVar | ✅ | ✅ | OK |
+    | Loop | maxIterations | ✅ | ✅ | OK |
+    | Loop | exitCondition | ✅ | ✅ | OK |
+    | Gate | prompt | ✅ | ✅ | OK |
+    | Gate | onReject | ✅ | ✅ | OK |
+    | Section | title/goalNote/exitCriteria | ✅ | ✅ | OK |
+    | Sub-agent | execMode | ✅ | ✅ | OK |
+    | Sub-agent | agent.role | ✅ | ✅ | OK |
+    | Sub-agent | agent.task | ✅ | ✅ | OK |
+    | Sub-agent | agent.agentic | ❌ NOT USED | ❌ NOT USED | **FIX** |
+    | Sub-agent | agent.verbose | ❌ NOT USED | ❌ NOT USED | **FIX** |
+    | Sub-agent | agent.domain | ✅ | ✅ | OK |
+    | Sub-agent | agent.rationale | ✅ | ✅ | OK |
+    | Sub-agent | agent.outputFile | ✅ | ✅ | OK |
+    | Sub-agent | agent.isPrimary | ✅ | ✅ | OK |
+    | Ask | oneMessage | ✅ | ✅ | OK |
+    | Ask | q.text | ✅ | ✅ | OK |
+    | Ask | q.kind | ✅ | ✅ | OK |
+    | Ask | q.options | ✅ | ✅ | OK |
+    | Ask | q.allowOther | ✅ | ✅ | OK |
+    | Ask | q.suggestDefault | ❌ NOT USED | ❌ NOT USED | **FIX** |
+    | Ask | q.saveTo | ✅ | ✅ | OK |
+    | Package | archiveName/tree/filesNote | ✅ | ✅ | OK |
+    | Table | caption/headers/rows | ✅ | ✅ | OK |
+    | Route | on | ✅ | ✅ | OK |
+    | Route | case.label/match | ✅ | ✅ | OK |
+
+  - **Priority:** MEDIUM — completeness and user trust
+  - **Files:** `script.js`
+
+### 9.4 FEATURE: Expand Compact/Explicit Verbosity to ALL Output Sections
+
+- [⬜] **V1 — Compact/Explicit for Role header**
+  - **What:** Currently the Role line is identical in both Compact and Explicit modes: `ROLE: <role> [caps]`. In Compact mode, it should be shorter; in Explicit mode, it should expand capabilities into full sentences.
+  - **Current Compact:** `ROLE: Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)  [agentic, verbose]`
+  - **Desired Compact:** `ROLE: Senior Software Engineer [agentic, verbose]` (omit parenthetical detail)
+  - **Desired Explicit:** `ROLE: You are a Senior Software Engineer (full-stack, React/Node.js, writes production-grade code). You operate in agentic mode — perform iterative, autonomous tasks. You must explain your reasoning (verbose mode).`
+  - **Priority:** MEDIUM
+  - **Files:** `script.js` — `generatePseudo()`, `generateMarkdown()`
+
+- [⬜] **V2 — Compact/Explicit for Context & Constraints**
+  - **What:** Currently the Context section outputs identically regardless of verbosity: `CONTEXT: project=X; stack=Y; rules=Z; output=W`.
+  - **Desired Compact:** `CONTEXT: project=X; stack=Y; rules=Z; output=W` (current, keep as-is)
+  - **Desired Explicit:**
+    ```
+    CONTEXT:
+      Project: X
+      Tech Stack: Y
+      Constraints & Rules: Z
+      Output Format: W
+    ```
+  - **Priority:** MEDIUM
+  - **Files:** `script.js` — `generatePseudo()`, `generateMarkdown()`
+
+- [⬜] **V3 — Compact/Explicit for Variables**
+  - **What:** Currently `VARS: name=value; name2=value2` regardless of verbosity.
+  - **Desired Compact:** `VARS: name=value; name2=value2` (current, keep as-is)
+  - **Desired Explicit:**
+    ```
+    VARIABLES (use ${name} to reference in steps):
+      name = value
+      name2 = value2
+    ```
+  - **Priority:** LOW
+  - **Files:** `script.js`
+
+- [⬜] **V4 — Compact/Explicit for Resources**
+  - **What:** Resources section is currently identical in both modes. In Explicit mode, text resources should be expanded with more context.
+  - **Desired Compact:** Current output (brief `@name [kind] — value`)
+  - **Desired Explicit:** Add explanation: "The following resources are available for reference. Use @name to refer to them in any step." + full inline text with line numbers
+  - **Priority:** LOW
+  - **Files:** `script.js` — `resourcesPseudo()`, `resourcesMd()`
+
+- [⬜] **V5 — Compact/Explicit for Mode headers**
+  - **What:** Mode headers currently output `MODE: /name — summary` then `Flag: --flag: desc` regardless of verbosity.
+  - **Desired Compact:** `MODE: /name` (summary omitted, flags as `--flag` only, no descriptions)
+  - **Desired Explicit:** Full `MODE: /name — summary` + expanded flag descriptions with usage guidance
+  - **Priority:** LOW
+  - **Files:** `script.js`
+
+- [⬜] **V6 — Compact/Explicit for all node types in Markdown output**
+  - **What:** The Markdown output (`mdNode()`) currently has LIMITED compact/explicit variation. Most node types output identically in both modes. Need to add explicit expansions for:
+    - **IF:** Explicit should add "Evaluate the condition and follow the matching branch" prose
+    - **LOOP:** Explicit should add "Iterate through the collection" / "Repeat until condition is met" prose
+    - **SUBAGENT:** Explicit should add "Spawn the following agents" prose with role descriptions
+    - **PARALLEL:** Explicit should add "Execute the following branches concurrently" prose
+    - **ROUTE:** Explicit should add "Analyze the user's request and route to the matching case" prose
+    - **SECTION:** Explicit should add full goal/criteria explanations
+    - **GATE:** Explicit should add full stop-and-wait instruction (currently only in pseudo-code)
+    - **ASK:** Explicit should add "Before proceeding, ask the user the following questions" prose
+  - **Priority:** MEDIUM — Markdown output is currently thin in Explicit mode
+  - **Files:** `script.js` — `mdNode()`
+
+### 9.5 FEATURE: Settings System (LARGE)
+
+- [⬜] **S1 — Design settings data model**
+  - **What:** Create a `DEFAULT_SETTINGS` object that contains every customizable default string in the app. This is the single source of truth for all hardcoded output text. The user's custom settings override defaults.
+  - **Model:**
+    ```javascript
+    const DEFAULT_SETTINGS = {
+      // Role labels
+      role: {
+        label: 'ROLE',
+        explicitPrefix: 'You are a ',
+        explicitSuffix: '.',
+        capsFormat: 'brackets', // 'brackets' | 'inline' | 'none'
+      },
+      // Gate output
+      gate: {
+        compactLabel: 'GATE',
+        explicitStopWord: 'STOP',
+        explicitInstruction: 'Wait for explicit user confirmation before continuing. Do NOT proceed past this point until the user replies.',
+        confirmWord: 'Confirm',
+        rejectWord: 'If rejected',
+      },
+      // Task verbs (customizable verb names)
+      verbs: {
+        clone: 'CLONE',
+        analyze: 'ANALYZE',
+        implement: 'IMPLEMENT',
+        // ... all verbs
+      },
+      // Section labels
+      section: {
+        label: 'PHASE',
+        goalLabel: 'Goal',
+        exitLabel: 'Exit when',
+      },
+      // Loop labels
+      loop: {
+        forEachLabel: 'FOR EACH',
+        whileLabel: 'WHILE',
+        repeatLabel: 'REPEAT',
+        inKeyword: 'IN',
+        timesKeyword: 'TIMES',
+        maxLabel: 'max',
+        untilLabel: 'until',
+      },
+      // Sub-agent labels
+      subagent: {
+        spawnLabel: 'SPAWN sub-agents',
+        agenticLabel: 'agentic',
+        verboseLabel: 'verbose',
+        primaryLabel: '⭐',
+        rationaleLabel: 'Rationale',
+        reportLabel: 'Report',
+      },
+      // ASK labels
+      ask: {
+        label: 'ASK USER',
+        suggestDefaultLabel: 'suggest default',
+        allowOtherLabel: 'or Other',
+        saveToLabel: 'Save to',
+      },
+      // ROUTE labels
+      route: {
+        label: 'ROUTE',
+        decideLabel: 'DECIDE based on',
+        caseLabel: 'case',
+        defaultLabel: 'Otherwise',
+      },
+      // Context labels
+      context: {
+        label: 'CONTEXT',
+        projectLabel: 'project',
+        stackLabel: 'stack',
+        rulesLabel: 'rules',
+        outputLabel: 'output',
+      },
+      // Resource labels
+      resource: {
+        label: 'RESOURCES',
+        referenceNote: 'referenced below by @name',
+      },
+      // Mode labels
+      mode: {
+        label: 'MODE',
+        flagLabel: 'Flag',
+        stepsLabel: 'STEPS',
+      },
+      // Role presets (customizable full text for each role option)
+      rolePresets: {
+        'Senior Software Engineer': 'Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)',
+        'Code Reviewer': 'Code Reviewer (meticulous, checks security, performance & readability)',
+        'DevOps Engineer': 'DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)',
+        'Security Analyst': 'Security Analyst (finds vulnerabilities, OWASP top 10, threat modeling)',
+        'QA Tester': 'QA Tester (automated testing, edge cases, regression suites)',
+        'Technical Writer': 'Technical Writer (clear docs, tutorials, API references)',
+        'Data Scientist': 'Data Scientist (ML pipelines, data cleaning, model evaluation)',
+        'Product Manager': 'Product Manager (user stories, roadmapping, prioritization)',
+        'Frontend Developer': 'Frontend Developer (React, Vue, CSS, responsive UI, accessibility)',
+        'Backend Developer': 'Backend Developer (APIs, databases, auth, server-side logic)',
+        'Full-Stack Developer': 'Full-Stack Developer (end-to-end, database to UI)',
+        'Solutions Architect': 'Solutions Architect (system design, tech evaluation, scalability)',
+        'Database Administrator': 'Database Administrator (schema, migrations, performance, replication)',
+        'UX Designer': 'UX Designer (wireframes, prototypes, usability testing)',
+        'API Designer': 'API Designer (RESTful, GraphQL, versioning, DX)',
+        'Site Reliability Engineer': 'Site Reliability Engineer (uptime, SLOs, monitoring, alerting)',
+      },
+      // Memory directive
+      memory: {
+        label: 'MEMORY',
+        instruction: 'Save this entire prompt as "{file}" and re-read it at the start of every new request. Never discard or summarize it.',
+      },
+      // Step numbering
+      steps: {
+        label: 'STEPS',
+        emptyLabel: '(no steps)',
+      },
+    };
+    ```
+  - **State:** `state.settings = {}` — initially empty (all defaults from `DEFAULT_SETTINGS`). Only overridden keys are stored.
+  - **Lookup:** `function getSetting(path)` — traverses dot-path like `'gate.explicitStopWord'`, returns `state.settings[path]` if set, else `DEFAULT_SETTINGS` value.
+  - **Priority:** HIGH — foundation for the entire settings system
+  - **Files:** `script.js`
+
+- [⬜] **S2 — Build Settings Modal UI**
+  - **What:** A modal/panel window accessible via a ⚙️ gear icon button (placed next to the theme toggle in the header, or in the sidebar footer). The modal shows ALL customizable settings organized by category (Role, Gate, Loop, Section, etc.), with input fields for each value.
+  - **UI structure:**
+    - Tabbed or accordion sections for each category
+    - Each setting shows: label + current value input + "Reset to default" button
+    - Search/filter to quickly find a setting
+    - "Reset All to Defaults" button
+    - "Import Settings" / "Export Settings" buttons
+    - Changes apply live (preview updates in real-time)
+  - **Modal behavior:**
+    - Opens over the main layout as an overlay
+    - Close via ✕ button or clicking outside
+    - Changes are auto-saved to `state.settings` and persisted in localStorage
+  - **Priority:** HIGH — core UI for settings
+  - **Files:** `script.js`, `index.html`, `style.css`
+
+- [⬜] **S3 — Connect settings to output generators**
+  - **What:** Replace ALL hardcoded strings in `generatePseudo()`, `generateMarkdown()`, `pseudoNode()`, `mdNode()`, `resourcesPseudo()`, `resourcesMd()`, `headerLines()` with `getSetting()` calls.
+  - **Examples:**
+    - `ROLE:` → `getSetting('role.label') + ':'`
+    - `GATE` → `getSetting('gate.compactLabel')`
+    - `STOP` → `getSetting('gate.explicitStopWord')`
+    - `Wait for explicit user confirmation...` → `getSetting('gate.explicitInstruction')`
+    - `FOR EACH` → `getSetting('loop.forEachLabel')`
+    - `SPAWN sub-agents` → `getSetting('subagent.spawnLabel')`
+    - Role preset text → `getSetting('rolePresets.' + key)` or user's custom override
+  - **Scope:** Every string in the output that is NOT user-entered data should be customizable via settings.
+  - **Priority:** HIGH — makes settings actually functional
+  - **Files:** `script.js`
+
+- [⬜] **S4 — Role preset customization**
+  - **What:** The Role `<select>` dropdown has hardcoded option values like `"Frontend Developer (React, Vue, CSS, responsive UI, accessibility)"`. Users want to change these to their own preferred text (e.g., `"Frontend Developer (CSS, JS, HTML)"`).
+  - **Implementation:**
+    1. The `DEFAULT_SETTINGS.rolePresets` object maps role key → default full text
+    2. When a role is selected, `getEffectiveRole()` looks up `getSetting('rolePresets.' + roleKey)` and uses that text
+    3. In the Settings modal, the Role section shows each preset with an editable text field
+    4. Users can modify any preset's full text
+    5. The `<select>` dropdown shows the short label (e.g., "Frontend Developer"), but the effective output uses the customizable full text
+  - **Priority:** HIGH — explicitly requested by user
+  - **Files:** `script.js`, `style.css`
+
+- [⬜] **S5 — Settings import/export**
+  - **What:** Add buttons in the Settings modal (and optionally in the sidebar) to:
+    - **Export Settings:** Download `state.settings` as a JSON file (`settings-YYYY-MM-DD.json`)
+    - **Import Settings:** Upload a JSON file and merge it into `state.settings`
+    - **Reset All:** Clear `state.settings` entirely (revert to all defaults)
+  - **Implementation:**
+    1. Export: `JSON.stringify(state.settings, null, 2)` → download as file
+    2. Import: Read file → parse JSON → validate structure → `Object.assign(state.settings, imported)` → save
+    3. Reset: `state.settings = {}` → save → re-render
+  - **Priority:** HIGH — explicitly requested by user
+  - **Files:** `script.js`
+
+- [⬜] **S6 — Settings persistence and migration**
+  - **What:** Settings should persist in localStorage alongside the main state. When the app loads, custom settings are merged with defaults.
+  - **Storage key:** `prompt_generator_settings` (separate from main state for easier import/export)
+  - **Migration:** If new settings keys are added in future versions, they automatically get default values from `DEFAULT_SETTINGS` without breaking old saves.
+  - **Priority:** MEDIUM
+  - **Files:** `script.js`
+
+---
+
+## Summary: Phase 9 Priority-Ordered Action List
+
+| Priority | Item | Section | Effort | Status |
+|----------|------|---------|--------|--------|
+| 🔴 P0 | BUG-M1 — Multi-mode disable button | 9.1 | Small | ✅ |
+| 🔴 P0 | BUG-M2 — Focus loss in mode Summary | 9.2 | Small | ✅ |
+| 🟠 P1 | BUG-F1 — Sub-agent agentic not in output | 9.3 | Small | ⬜ |
+| 🟠 P1 | BUG-F2 — Sub-agent verbose not in output | 9.3 | Small | ⬜ |
+| 🟠 P1 | BUG-F3 — ASK suggestDefault not in output | 9.3 | Small | ⬜ |
+| 🟠 P1 | BUG-F4 — Full audit of all fields | 9.3 | Small | ⬜ |
+| 🟠 P1 | S1 — Settings data model | 9.5 | Medium | ⬜ |
+| 🟠 P1 | S2 — Settings modal UI | 9.5 | Large | ⬜ |
+| 🟠 P1 | S3 — Connect settings to generators | 9.5 | Large | ⬜ |
+| 🟡 P2 | V1 — Compact/Explicit for Role | 9.4 | Small | ⬜ |
+| 🟡 P2 | V2 — Compact/Explicit for Context | 9.4 | Small | ⬜ |
+| 🟡 P2 | V6 — Compact/Explicit for all node types in MD | 9.4 | Medium | ⬜ |
+| 🟡 P2 | S4 — Role preset customization | 9.5 | Medium | ⬜ |
+| 🟡 P2 | S5 — Settings import/export | 9.5 | Medium | ⬜ |
+| 🟢 P3 | V3 — Compact/Explicit for Variables | 9.4 | Small | ⬜ |
+| 🟢 P3 | V4 — Compact/Explicit for Resources | 9.4 | Small | ⬜ |
+| 🟢 P3 | V5 — Compact/Explicit for Mode headers | 9.4 | Small | ⬜ |
+| 🟢 P3 | S6 — Settings persistence and migration | 9.5 | Small | ⬜ |

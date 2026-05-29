@@ -556,6 +556,8 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .btn-remove-mode:hover { background: var(--danger); color: #fff; }
 .btn-enable-multimode { background: var(--primary-light); color: var(--primary); border: 1.5px solid var(--primary); padding: 8px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .btn-enable-multimode:hover { background: var(--primary); color: #fff; }
+.btn-disable-multimode { background: var(--card-bg-2); color: var(--text-secondary); border: 1.5px solid var(--border-strong); padding: 8px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
+.btn-disable-multimode:hover { background: var(--danger-light); color: var(--danger); border-color: var(--danger); }
 .btn-add-mode-btn { background: var(--primary); color: #fff; border: none; padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .btn-add-mode-btn:hover { background: var(--primary-hover); }
 .icon-modes { background: #fef3c7; }

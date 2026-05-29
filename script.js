@@ -2257,14 +2257,26 @@
             if (state.modes.length > 1) {
                 html += '<button class="btn btn-remove-mode" id="btnRemoveMode">✕ Remove This Mode</button>';
             }
+            // BUG-M1 fix: Add "Disable multi-mode" button when multi-mode is enabled
+            html += '<button class="btn btn-disable-multimode" id="btnDisableMultiMode">↩ Disable multi-mode</button>';
             modeEditArea.innerHTML = html;
 
             // Add event listeners for mode editing
+            // BUG-M2 fix: Do NOT call renderModes() on input — only updatePreview + saveState + update tab text
             modeEditArea.querySelectorAll('[data-modefield]').forEach(inp => {
                 inp.addEventListener('input', (e) => {
                     const field = e.target.dataset.modefield;
                     const m = getActiveMode();
-                    if (m) { m[field] = e.target.value; updatePreview(); saveState(); renderModes(); }
+                    if (m) {
+                        m[field] = e.target.value;
+                        updatePreview();
+                        saveState();
+                        // Update the active tab text without re-rendering the whole modes UI
+                        if (field === 'name' && modeTabs) {
+                            const activeTab = modeTabs.querySelector('.mode-tab.active');
+                            if (activeTab) activeTab.textContent = e.target.value || '/unnamed';
+                        }
+                    }
                 });
             });
             modeEditArea.querySelectorAll('[data-flagfield]').forEach(inp => {
@@ -2293,6 +2305,9 @@
                 if (!confirm('Remove mode "' + (getActiveMode().name || 'unnamed') + '"? This will also remove all its steps.')) return;
                 removeActiveMode();
             });
+            // BUG-M1 fix: Disable multi-mode button handler
+            const disableMultiModeBtn = modeEditArea.querySelector('#btnDisableMultiMode');
+            if (disableMultiModeBtn) disableMultiModeBtn.addEventListener('click', disableMultiMode);
         }
     }
 
@@ -2331,6 +2346,21 @@
         }
         pushHistory(); renderModes(); renderTasks(); saveState();
     });
+
+    // BUG-M1: Disable multi-mode function (also used by the inline button in renderModes)
+    function disableMultiMode() {
+        if (state.modes.length > 1) {
+            if (!confirm('Disabling multi-mode will keep only the active mode ("' + (getActiveMode().name || '/default') + '") and remove all others. Continue?')) return;
+            const active = getActiveMode();
+            state.modes = [active];
+            state.activeModeId = active.id;
+        }
+        state.multiModeEnabled = false;
+        if (state.modes[0] && state.modes[0].nodes) {
+            state.nodes = state.modes[0].nodes;
+        }
+        pushHistory(); renderModes(); renderTasks(); saveState();
+    }
     btnAddMode && btnAddMode.addEventListener('click', addMode);
 
     // verbosity toggle (Compact / Explicit)  [§12]
