@@ -186,6 +186,8 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .task-card:hover { border-color: var(--border-strong); }
 .task-card.dragging { opacity: 0.4; }
 .task-card.flash { box-shadow: 0 0 0 3px rgba(79,70,229,0.4); }
+.task-card.invalid { border-color: var(--warning); box-shadow: 0 0 0 1px var(--warning) inset; }
+.task-card.invalid .task-number { background: var(--warning); }
 .task-card .drag-handle { display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--text-secondary); font-size: 1.4rem; padding: 0 4px; user-select: none; flex-shrink: 0; border-radius: 6px; line-height: 1; }
 .task-card .drag-handle:hover { background: var(--hover-bg); }
 .task-card .drag-handle:active { cursor: grabbing; }
@@ -234,8 +236,18 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 
 /* ─── Nested slots & drop zones ─── */
 .slots-wrap { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.slot-block { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; }
+.slot-block { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; border-left-width: 3px; }
 .agent-block { border-color: var(--sub-border); }
+
+/* R1: progressive depth cue — deeper nesting steps inward with a tinted left rail */
+.task-card.depth-1 { border-left: 3px solid var(--border-strong); }
+.task-card.depth-2 { border-left: 3px solid var(--loop-border); }
+.task-card.depth-3 { border-left: 3px solid var(--if-border); }
+.task-card.depth-4 { border-left: 3px solid var(--sub-border); }
+.task-card.depth-5 { border-left: 3px solid var(--par-border); }
+.task-card.depth-6 { border-left: 3px solid var(--primary); }
+.drop-zone > .task-card { margin-left: 2px; }
+.slots-wrap .slot-block { margin-left: 4px; }
 .slot-head { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
 .branch-then { color: var(--success); } .branch-else { color: var(--danger); }
 .branch-elseif { color: var(--warning); } .branch-loop { color: var(--loop-color); }
@@ -282,6 +294,7 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .md-code { color: #f87171; }
 .md-comment { color: #6b7280; font-style: italic; }
 .md-missing { color: #fb7185; font-weight: 700; }
+.md-var { color: #93c5fd; font-weight: 600; }
 .md-keyword { color: #f472b6; font-weight: 700; }
 
 /* ─── Toast ─── */

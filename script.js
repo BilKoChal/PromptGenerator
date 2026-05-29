@@ -325,6 +325,27 @@
     }
 
     // ──────────────────────────────────────
+    // Variable interpolation  [R2]
+    // Replaces ${name} in any emitted field with the variable's value.
+    // Unknown variables are left visibly marked so the agent/user notices.
+    // ──────────────────────────────────────
+    function varMap() {
+        const m = {};
+        (state.variables || []).forEach(v => { if (v.name && v.name.trim()) m[v.name.trim()] = v.value || ''; });
+        return m;
+    }
+    function interp(str, map) {
+        if (str == null) return str;
+        map = map || varMap();
+        return String(str).replace(/\$\{\s*([A-Za-z0-9_]+)\s*\}/g, (full, name) => {
+            if (Object.prototype.hasOwnProperty.call(map, name)) {
+                return map[name] !== '' ? map[name] : '${' + name + '}';
+            }
+            return '${' + name + ':UNDEFINED}';
+        });
+    }
+
+    // ──────────────────────────────────────
     // Output generation  [#1, #7, B17]
     // ──────────────────────────────────────
     function generateOutput() {
@@ -369,15 +390,15 @@
             }
             if (n.action === 'break' || n.action === 'continue') return ind + num + '. ' + t.verb + '\n';
             const verb = getVerb(n);
-            let line = ind + num + '. ' + verb + (n.target ? ' ' + n.target : ' <target?>');
-            if (n.details && n.details.trim()) line += '  // ' + n.details.trim().replace(/\n+/g, '; ');
+            let line = ind + num + '. ' + verb + (n.target ? ' ' + interp(n.target) : ' <target?>');
+            if (n.details && n.details.trim()) line += '  // ' + interp(n.details).trim().replace(/\n+/g, '; ');
             return line + '\n';
         }
         if (n.type === 'if') {
-            let s = ind + num + '. IF ' + (n.condition || '<condition?>') + ':\n';
+            let s = ind + num + '. IF ' + (n.condition ? interp(n.condition) : '<condition?>') + ':\n';
             s += slotPseudo(n.then, depth + 1, num);
             (n.elseifs || []).forEach(e => {
-                s += ind + '   ELSE IF ' + (e.condition || '<condition?>') + ':\n';
+                s += ind + '   ELSE IF ' + (e.condition ? interp(e.condition) : '<condition?>') + ':\n';
                 s += slotPseudo(e.children, depth + 1, num);
             });
             if ((n.else || []).length) { s += ind + '   ELSE:\n'; s += slotPseudo(n.else, depth + 1, num); }
@@ -385,16 +406,16 @@
         }
         if (n.type === 'loop') {
             let head;
-            if (n.loopType === 'while') head = 'WHILE ' + (n.source || '<condition?>');
-            else if (n.loopType === 'repeat') head = 'REPEAT ' + (n.source || '<n?>') + ' TIMES';
-            else head = 'FOR EACH ' + (n.itemVar || 'item') + ' IN ' + (n.source || '<collection?>');
+            if (n.loopType === 'while') head = 'WHILE ' + (n.source ? interp(n.source) : '<condition?>');
+            else if (n.loopType === 'repeat') head = 'REPEAT ' + (n.source ? interp(n.source) : '<n?>') + ' TIMES';
+            else head = 'FOR EACH ' + (n.itemVar || 'item') + ' IN ' + (n.source ? interp(n.source) : '<collection?>');
             return ind + num + '. ' + head + ':\n' + slotPseudo(n.body, depth + 1, num);
         }
         if (n.type === 'subagent') {
             let s = ind + num + '. SPAWN sub-agents [' + (n.execMode || 'parallel').toUpperCase() + ']:\n';
             (n.agents || []).forEach((a, ai) => {
-                s += ind + '   - agent "' + (a.role || 'unnamed') + '"' +
-                     (a.task ? ' → ' + a.task : '') +
+                s += ind + '   - agent "' + (a.role ? interp(a.role) : 'unnamed') + '"' +
+                     (a.task ? ' → ' + interp(a.task) : '') +
                      (a.agentic ? ' (agentic)' : '') + '\n';
                 if (a.children && a.children.length) s += slotPseudo(a.children, depth + 2, num + '.' + (ai + 1));
             });
@@ -440,27 +461,27 @@
             if (n.action === 'goto') return ind + '- **' + num + '. GOTO** Step ' + (stepNumberOf(n.gotoRef) || '?') + '\n';
             if (NO_TARGET[n.action]) return ind + '- **' + num + '. ' + t.verb + '**\n';
             const verb = getVerb(n);
-            let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target || '(not specified)') + '`\n';
-            if (n.details && n.details.trim()) n.details.split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
+            let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+            if (n.details && n.details.trim()) interp(n.details).split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
             return s;
         }
         if (n.type === 'if') {
-            let s = ind + '- **' + num + '. IF** `' + (n.condition || '?') + '` **THEN:**\n';
+            let s = ind + '- **' + num + '. IF** `' + (n.condition ? interp(n.condition) : '?') + '` **THEN:**\n';
             s += slotMd(n.then, depth + 1, num);
-            (n.elseifs || []).forEach(e => { s += ind + '  **ELSE IF** `' + (e.condition || '?') + '`:\n'; s += slotMd(e.children, depth + 1, num); });
+            (n.elseifs || []).forEach(e => { s += ind + '  **ELSE IF** `' + (e.condition ? interp(e.condition) : '?') + '`:\n'; s += slotMd(e.children, depth + 1, num); });
             if ((n.else || []).length) { s += ind + '  **ELSE:**\n'; s += slotMd(n.else, depth + 1, num); }
             return s;
         }
         if (n.type === 'loop') {
-            let head = n.loopType === 'while' ? 'WHILE `' + (n.source || '?') + '`'
-                : n.loopType === 'repeat' ? 'REPEAT `' + (n.source || '?') + '` TIMES'
-                : 'FOR EACH `' + (n.itemVar || 'item') + '` IN `' + (n.source || '?') + '`';
+            let head = n.loopType === 'while' ? 'WHILE `' + (n.source ? interp(n.source) : '?') + '`'
+                : n.loopType === 'repeat' ? 'REPEAT `' + (n.source ? interp(n.source) : '?') + '` TIMES'
+                : 'FOR EACH `' + (n.itemVar || 'item') + '` IN `' + (n.source ? interp(n.source) : '?') + '`';
             return ind + '- **' + num + '. ' + head + ':**\n' + slotMd(n.body, depth + 1, num);
         }
         if (n.type === 'subagent') {
             let s = ind + '- **' + num + '. SPAWN sub-agents** [' + (n.execMode || 'parallel') + ']:\n';
             (n.agents || []).forEach((a, ai) => {
-                s += ind + '  - **' + (a.role || 'agent') + '**' + (a.task ? ' — ' + a.task : '') + '\n';
+                s += ind + '  - **' + (a.role ? interp(a.role) : 'agent') + '**' + (a.task ? ' — ' + interp(a.task) : '') + '\n';
                 if (a.children && a.children.length) s += slotMd(a.children, depth + 2, num + '.' + (ai + 1));
             });
             return s;
@@ -488,25 +509,52 @@
         previewTimer = setTimeout(renderPreviewNow, 110);
         saveState();
     }
+    // Validation walk that knows loop-ancestry  [R4]
+    // Returns { missing, badIds } where badIds are nodes flagged invalid.
+    function collectIssues() {
+        let missing = 0;
+        const badIds = {};
+        (function rec(arr, inLoop) {
+            arr.forEach(n => {
+                if (n.type === 'task') {
+                    if (n.action === 'goto' && !n.gotoRef) { missing++; badIds[n.id] = 1; }
+                    else if ((n.action === 'break' || n.action === 'continue') && !inLoop) { missing++; badIds[n.id] = 1; }
+                    else if (!NO_TARGET[n.action] && !(n.target || '').trim()) { missing++; badIds[n.id] = 1; }
+                }
+                if (n.type === 'if' && !(n.condition || '').trim()) { missing++; badIds[n.id] = 1; }
+                if (n.type === 'loop' && !(n.source || '').trim()) { missing++; badIds[n.id] = 1; }
+                if (isContainer(n)) {
+                    const childInLoop = inLoop || n.type === 'loop';
+                    slotsOf(n).forEach(s => rec(s.arr, childInLoop));
+                }
+            });
+        })(state.nodes, false);
+        return { missing, badIds };
+    }
+
     function renderPreviewNow() {
         const text = generateOutput();
         const html = highlight(text);
         previewBlock.innerHTML = html;
         // token estimate (rough ~4 chars/token)
         if (tokenBadge) tokenBadge.textContent = '~' + Math.max(1, Math.round(text.length / 4)) + ' tok';
-        // validation: count empty required fields
-        let missing = 0;
-        walk(state.nodes, (n) => {
-            if (n.type === 'task' && !NO_TARGET[n.action] && !(n.target || '').trim()) missing++;
-            if (n.type === 'task' && n.action === 'goto' && !n.gotoRef) missing++;
-            if (n.type === 'if' && !(n.condition || '').trim()) missing++;
-            if (n.type === 'loop' && !(n.source || '').trim()) missing++;
-        });
+        // validation  [R4]
+        const issues = collectIssues();
+        lastBadIds = issues.badIds;
         if (validBadge) {
-            validBadge.textContent = missing ? '⚠ ' + missing + ' incomplete' : '✓ complete';
-            validBadge.className = 'valid-badge ' + (missing ? 'is-warn' : 'is-ok');
+            validBadge.textContent = issues.missing ? '⚠ ' + issues.missing + ' incomplete' : '✓ complete';
+            validBadge.className = 'valid-badge ' + (issues.missing ? 'is-warn' : 'is-ok');
+        }
+        // mark invalid cards in the editor
+        if (taskList) {
+            taskList.querySelectorAll('.task-card.invalid').forEach(c => c.classList.remove('invalid'));
+            Object.keys(issues.badIds).forEach(id => {
+                const card = taskList.querySelector('.task-card[data-node-id="' + id + '"]');
+                if (card) card.classList.add('invalid');
+            });
         }
     }
+    let lastBadIds = {};
     function highlight(text) {
         return escapeHtml(text)
             .replace(/^(# .+)$/gm, '<span class="md-h1">$1</span>')
@@ -516,7 +564,8 @@
             .replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">**$1**</span>')
             .replace(/`([^`]+?)`/g, '<span class="md-code">`$1`</span>')
             .replace(/(\/\/[^\n]*)$/gm, '<span class="md-comment">$1</span>')
-            .replace(/&lt;([a-z?]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
+            .replace(/\$\{[A-Za-z0-9_]+(?::UNDEFINED)?\}/g, '<span class="md-var">$&</span>')
+            .replace(/&lt;([a-zA-Z?: ]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
             .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER)\b/g, '<span class="md-keyword">$1</span>');
     }
 
