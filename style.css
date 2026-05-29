@@ -111,6 +111,17 @@ body.sidebar-open .sidebar-overlay { opacity: 1; visibility: visible; }
 .btn-outline-small { background: var(--card-bg); border: 1.5px solid var(--border); padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; cursor: pointer; flex: 1; text-align: center; color: var(--text); }
 .btn-outline-small:hover { background: var(--hover-bg); border-color: var(--border-strong); }
 
+/* ─── Sidebar Templates ─── */
+.sidebar-section-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 8px; color: var(--text-secondary); letter-spacing: 0.02em; }
+.template-section { margin-bottom: 0; }
+.sidebar-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.template-list { display: flex; flex-direction: column; gap: 6px; }
+.template-item { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--card-bg-2); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition); border-left: 3px solid var(--primary); }
+.template-item:hover { background: var(--primary-light); border-color: var(--primary); }
+.template-item-name { font-weight: 700; font-size: 0.88rem; }
+.template-item-desc { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; }
+.template-item-role { font-size: 0.7rem; color: var(--primary); font-weight: 600; font-style: italic; }
+
 /* ─── Layout ─── */
 .main-layout { display: flex; gap: 20px; max-width: 1400px; margin: 0 auto; }
 .builder-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; }

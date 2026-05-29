@@ -319,19 +319,25 @@
 
 ### 5.4 Starter Templates / Presets
 
-- [❌] **R6 — Ship 3–4 built-in workflow templates**
+- [✅] **R6 — Ship 4 built-in workflow templates**
   - **What:** No starter templates exist. Users start from scratch every time. The plan calls for 3–4 built-in trees loadable from the sidebar (e.g., "Bug Triage", "Code Review", "Migration", "Full Project Setup").
-  - **Action required:**
-    1. Design 3–4 template trees as JSON state objects:
-       - **Bug Triage:** Role=QA Tester, steps=REPO CLONE → ANALYZE → IF reproducible → DEBUG → TEST → ELSE → DOCUMENT
-       - **Code Review:** Role=Code Reviewer, steps=CLONE → ANALYZE → FOR EACH file in PR → REVIEW → IF issues → DOCUMENT → DEPLOY
-       - **Migration:** Role=DevOps Engineer, steps=ANALYZE → RESEARCH → PLAN → IF approved → IMPLEMENT → TEST → DEPLOY → ELSE → REVISION LOOP (max 3)
-       - **Full Project Setup:** Role=Senior Software Engineer, multi-phase with sub-agents
-    2. Add a "Templates" section to the sidebar (above or below saved workflows)
-    3. Clicking a template loads it as current state (with confirmation if unsaved changes exist)
-    4. Templates are hardcoded (not in localStorage) so they're always available
+  - **Action completed:**
+    1. ✅ Designed 4 template trees as JSON state objects:
+       - **Bug Triage:** Role=QA Tester, steps=CLONE → ANALYZE → IF reproducible → DEBUG → IMPLEMENT → TEST → GATE → DEPLOY, ELSE → DOCUMENT
+       - **Code Review:** Role=Code Reviewer, steps=CLONE → ANALYZE → FOR EACH file in PR → REVIEW → IF issues → DOCUMENT → GATE → DOCUMENT summary
+       - **Migration:** Role=DevOps Engineer, phases=Research & Planning (SECTION) → GATE → Implementation & Testing (SECTION with LOOP max 3 cycles, IF tests pass) → DEPLOY
+       - **Full Project Setup:** Role=Senior Software Engineer, 3 phases (Phase 0 with sub-agents Architect+Security, Phase 1 with feature loop, Phase 2 with sub-agents Reviewer+QA), variables ($project, $repo), gates
+    2. ✅ Added a "Templates" section to the sidebar (above saved workflows)
+    3. ✅ Clicking a template loads it as current state (with confirmation dialog if unsaved changes)
+    4. ✅ Templates are hardcoded (not in localStorage) so they're always available
+    5. ✅ Added `buildTemplateState()`, `BUILTIN_TEMPLATES[]`, `renderTemplateList()`, `loadTemplate()` functions
+    6. ✅ Templates get fresh unique IDs via `reId()` on load (safe to modify without ID conflicts)
+    7. ✅ `deepClone()` used to avoid mutating template originals
+    8. ✅ Keyboard accessible (tabindex, Enter/Space key handlers, aria-label)
+    9. ✅ Added CSS styling for template items (name, description, role badge, hover effects)
+    10. ✅ Added sidebar section title and visual divider between templates and saved workflows
   - **Priority:** MEDIUM — significantly improves first-use experience
-  - **File:** `script.js` (add template data + sidebar section), `index.html` (add templates container), `style.css` (template item styling)
+  - **Files:** `script.js` (template data + sidebar section + load logic), `index.html` (templates container), `style.css` (template item styling)
 
 ---
 
@@ -626,7 +632,7 @@
 | 🟠 P1 | GATE node | 6 | Medium | ✅ |
 | 🟠 P1 | Capped revision loops (maxIterations) | 6 | Small | ✅ |
 | 🟠 P1 | Section GOTO targetability (verify) | 6 | Small | ✅ |
-| 🟡 P2 | R6 — Starter templates | 5 | Medium | ❌ |
+| 🟡 P2 | R6 — Starter templates | 5 | Medium | ✅ |
 | 🟡 P2 | R4 — break/continue validation UX | 5 | Small | 🔶 |
 | 🟡 P2 | ASK node (questionnaire) | 7 | Large | ❌ |
 | 🟡 P2 | PRODUCE FILE task sub-type | 7 | Small | ❌ |

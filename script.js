@@ -1394,6 +1394,169 @@
     });
 
     // ──────────────────────────────────────
+    // Built-in Starter Templates  [R6 / P2]
+    // ──────────────────────────────────────
+    function buildTemplateState(overrides) {
+        const s = defaultState();
+        Object.assign(s, overrides);
+        // Re-id all nodes to get fresh unique IDs
+        (s.nodes || []).forEach(reId);
+        return s;
+    }
+
+    const BUILTIN_TEMPLATES = [
+        {
+            name: '🐛 Bug Triage',
+            desc: 'Reproduce, debug, and fix a reported bug with regression tests',
+            state: buildTemplateState({
+                roleSelectValue: 'QA Tester (automated testing, edge cases, regression suites)',
+                agentic: true, strict: true,
+                contextProject: '', contextTech: '', contextOutput: 'step_by_step',
+                nodes: [
+                    makeTask('clone'),   // 1. CLONE
+                    (() => { const t = makeTask('analyze'); t.target = 'the reported bug and related code'; t.details = 'Identify the affected module, function, and code paths'; return t; })(),
+                    (() => { const n = makeIf(); n.condition = 'bug is reproducible'; n.then = [
+                        (() => { const t = makeTask('debug'); t.target = 'root cause of the bug'; t.details = 'Trace the execution path, identify the exact line/logic causing the issue'; return t; })(),
+                        (() => { const t = makeTask('implement'); t.target = 'fix for the bug'; t.details = 'Apply a minimal, targeted fix — do not refactor unrelated code'; return t; })(),
+                        (() => { const t = makeTask('test'); t.target = 'the fix and edge cases'; t.details = 'Verify the bug is fixed; test related paths to prevent regression'; return t; })(),
+                    ]; n.else = [
+                        (() => { const t = makeTask('document'); t.target = 'the bug as non-reproducible'; t.details = 'Record steps attempted, environment details, and reasons it could not be reproduced'; return t; })(),
+                    ]; return n; })(),
+                    (() => { const g = makeGate(); g.prompt = 'Bug fix verified — ready to deploy?'; g.onReject = 'Continue debugging or request more information'; return g; })(),
+                    (() => { const t = makeTask('deploy'); t.target = 'staging for final validation'; return t; })(),
+                ],
+            })
+        },
+        {
+            name: '👀 Code Review',
+            desc: 'Systematic PR review with per-file loop, security and style checks',
+            state: buildTemplateState({
+                roleSelectValue: 'Code Reviewer (meticulous, checks security, performance & readability)',
+                strict: true,
+                contextProject: '', contextTech: '', contextOutput: 'bullet_points',
+                nodes: [
+                    makeTask('clone'),
+                    (() => { const t = makeTask('analyze'); t.target = 'the PR diff and changed files'; t.details = 'Get the full list of changed files and understand the PR purpose'; return t; })(),
+                    (() => { const lp = makeLoop(); lp.loopType = 'for_each'; lp.itemVar = 'file'; lp.source = 'changed files in PR'; lp.body = [
+                        (() => { const t = makeTask('review'); t.target = '${file}'; t.details = 'Check for: bugs, security issues, performance, readability, naming, and style consistency'; return t; })(),
+                        (() => { const n = makeIf(); n.condition = 'issues found in ${file}'; n.then = [
+                            (() => { const t = makeTask('document'); t.target = 'issues found in ${file}'; t.details = 'List each issue with line number, severity, and suggested fix'; return t; })(),
+                        ]; return n; })(),
+                    ]; return lp; })(),
+                    (() => { const g = makeGate(); g.prompt = 'Review complete — approve the PR?'; g.onReject = 'Request changes from the author'; return g; })(),
+                    (() => { const t = makeTask('document'); t.target = 'final review summary'; t.details = 'Include: overall assessment, critical issues, minor suggestions, and approval/rejection decision'; return t; })(),
+                ],
+            })
+        },
+        {
+            name: '📦 Migration',
+            desc: 'Plan and execute a technology migration with approval gates and revision loops',
+            state: buildTemplateState({
+                roleSelectValue: 'DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)',
+                agentic: true,
+                contextProject: '', contextTech: '', contextConstraints: 'Backward compatible, no downtime, rollback plan required',
+                nodes: [
+                    (() => { const sec = makeSection(); sec.title = 'Research & Planning'; sec.goalNote = 'Understand current system and create migration plan'; sec.exitCriteria = 'Migration plan approved by user'; sec.children = [
+                        (() => { const t = makeTask('analyze'); t.target = 'current system architecture and dependencies'; t.details = 'Map all services, databases, APIs, and integrations that will be affected'; return t; })(),
+                        (() => { const t = makeTask('research'); t.target = 'best practices and migration strategies'; t.details = 'Look for official migration guides, known pitfalls, and recommended tooling'; return t; })(),
+                        (() => { const t = makeTask('document'); t.target = 'migration plan with rollback strategy'; t.details = 'Include: step-by-step migration order, rollback procedures, risk assessment, and timeline estimates'; return t; })(),
+                    ]; return sec; })(),
+                    (() => { const g = makeGate(); g.prompt = 'Migration plan approved — proceed with implementation?'; g.onReject = 'Revise the plan based on feedback'; return g; })(),
+                    (() => { const sec = makeSection(); sec.title = 'Implementation & Testing'; sec.goalNote = 'Execute the migration in stages with verification'; sec.children = [
+                        (() => { const lp = makeLoop(); lp.loopType = 'for_each'; lp.itemVar = 'step'; lp.source = 'migration plan steps'; lp.maxIterations = '3'; lp.exitCondition = 'user is satisfied with results'; lp.body = [
+                            (() => { const t = makeTask('implement'); t.target = '${step}'; t.details = 'Apply the migration step as described in the plan'; return t; })(),
+                            (() => { const t = makeTask('test'); t.target = 'system after ${step}'; t.details = 'Run all integration tests, smoke tests, and manual verification'; return t; })(),
+                            (() => { const n = makeIf(); n.condition = 'tests pass after ${step}'; n.then = [
+                                (() => { const t = makeTask('deploy'); t.target = 'migrated ${step} to staging'; return t; })(),
+                            ]; n.else = [
+                                (() => { const t = makeTask('debug'); t.target = 'failures after ${step}'; t.details = 'Investigate and fix; if unfixable, rollback this step'; return t; })(),
+                            ]; return n; })(),
+                        ]; return lp; })(),
+                    ]; return sec; })(),
+                    (() => { const t = makeTask('deploy'); t.target = 'fully migrated system to production'; t.details = 'Switch traffic, monitor metrics, and confirm stability'; return t; })(),
+                ],
+            })
+        },
+        {
+            name: '🏗️ Full Project Setup',
+            desc: 'Multi-phase project with sub-agents: plan, build, review, and deliver',
+            state: buildTemplateState({
+                roleSelectValue: 'Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)',
+                agentic: true, subagent: true, strict: true,
+                contextProject: '', contextTech: 'React, Node.js, PostgreSQL',
+                variables: [
+                    { name: 'project', value: '' },
+                    { name: 'repo', value: '' },
+                ],
+                nodes: [
+                    (() => { const sec = makeSection(); sec.title = 'Phase 0 — Requirements & Architecture'; sec.goalNote = 'Gather requirements and produce an architecture document'; sec.exitCriteria = 'Architecture document approved'; sec.children = [
+                        (() => { const t = makeTask('clone'); t.target = '${repo}'; return t; })(),
+                        (() => { const t = makeTask('analyze'); t.target = 'existing codebase structure and patterns'; t.details = 'Understand the current project layout, conventions, and technical debt'; return t; })(),
+                        (() => { const sa = makeSubagent(); sa.execMode = 'parallel'; sa.agents = [
+                            (() => { const a = makeAgent(); a.role = 'Architect'; a.task = 'Design the system architecture and data model'; a.agentic = true; return a; })(),
+                            (() => { const a = makeAgent(); a.role = 'Security Analyst'; a.task = 'Identify security requirements and threat model'; a.agentic = true; return a; })(),
+                        ]; return sa; })(),
+                        (() => { const t = makeTask('document'); t.target = 'architecture document at docs/${project}_architecture.md'; t.details = 'Include: ER diagram, API contract, folder structure, and tech decisions with rationale'; return t; })(),
+                    ]; return sec; })(),
+                    (() => { const g = makeGate(); g.prompt = 'Architecture approved — start implementation?'; g.onReject = 'Revise architecture based on feedback'; return g; })(),
+                    (() => { const sec = makeSection(); sec.title = 'Phase 1 — Implementation'; sec.goalNote = 'Build the core features end-to-end'; sec.exitCriteria = 'All features implemented and unit-tested'; sec.children = [
+                        (() => { const lp = makeLoop(); lp.loopType = 'for_each'; lp.itemVar = 'feature'; lp.source = 'priority-ordered feature list'; lp.body = [
+                            (() => { const t = makeTask('implement'); t.target = '${feature}'; t.details = 'Follow the architecture document; write clean, well-tested code'; return t; })(),
+                            (() => { const t = makeTask('test'); t.target = '${feature} unit and integration tests'; t.details = 'Aim for >80% coverage; test edge cases and error paths'; return t; })(),
+                        ]; return lp; })(),
+                    ]; return sec; })(),
+                    (() => { const sec = makeSection(); sec.title = 'Phase 2 — Review & Deliver'; sec.goalNote = 'Quality assurance and final delivery'; sec.exitCriteria = 'All tests pass and code review approved'; sec.children = [
+                        (() => { const sa = makeSubagent(); sa.execMode = 'parallel'; sa.agents = [
+                            (() => { const a = makeAgent(); a.role = 'Code Reviewer'; a.task = 'Review all code for quality, security, and maintainability'; a.agentic = true; return a; })(),
+                            (() => { const a = makeAgent(); a.role = 'QA Tester'; a.task = 'Run end-to-end tests and verify all acceptance criteria'; a.agentic = true; return a; })(),
+                        ]; return sa; })(),
+                        (() => { const n = makeIf(); n.condition = 'all reviews pass and tests green'; n.then = [
+                            (() => { const t = makeTask('deploy'); t.target = 'production'; return t; })(),
+                        ]; n.else = [
+                            (() => { const t = makeTask('debug'); t.target = 'review findings and test failures'; t.details = 'Fix all critical issues; re-test and re-review'; return t; })(),
+                        ]; return n; })(),
+                        (() => { const t = makeTask('document'); t.target = 'README, API docs, and deployment guide'; return t; })(),
+                    ]; return sec; })(),
+                ],
+            })
+        },
+    ];
+
+    function renderTemplateList() {
+        const container = document.getElementById('templateList');
+        if (!container) return;
+        container.innerHTML = '';
+        BUILTIN_TEMPLATES.forEach((tpl, idx) => {
+            const item = document.createElement('div');
+            item.className = 'template-item';
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('aria-label', 'Load template: ' + tpl.name);
+            item.innerHTML = '<span class="template-item-name">' + escapeHtml(tpl.name) + '</span>' +
+                '<span class="template-item-desc">' + escapeHtml(tpl.desc) + '</span>' +
+                '<span class="template-item-role">' + escapeHtml(tpl.state.roleSelectValue.split('(')[0].trim()) + '</span>';
+            item.addEventListener('click', () => loadTemplate(idx));
+            item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadTemplate(idx); } });
+            container.appendChild(item);
+        });
+    }
+
+    function loadTemplate(idx) {
+        const tpl = BUILTIN_TEMPLATES[idx];
+        if (!tpl) return;
+        if (!confirm('Load template "' + tpl.name + '"?\nThis will replace your current workflow.')) return;
+        state = deepClone(tpl.state);
+        // Re-id all nodes so they get fresh unique IDs
+        (state.nodes || []).forEach(reId);
+        state.schema = SCHEMA;
+        pushHistory();
+        updateAllUI();
+        saveState();
+        closeSidebar();
+        showToast('Loaded template: ' + tpl.name);
+    }
+
+    // ──────────────────────────────────────
     // Workflows sidebar  [B7]
     // ──────────────────────────────────────
     const sidebarToggle = document.getElementById('sidebarToggle');
@@ -1490,6 +1653,7 @@
     applyTheme((function () { try { return localStorage.getItem(THEME_KEY) || 'light'; } catch (e) { return 'light'; } })());
     loadState();
     updateAllUI();
+    renderTemplateList();
     renderWorkflowList();
     pushHistory();
     console.log('Prompt Generator (tree model) ready');
