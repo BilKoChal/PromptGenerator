@@ -578,10 +578,20 @@
     // ──────────────────────────────────────
     // Sidebar Logic
     // ──────────────────────────────────────
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
     function openSidebar() { document.body.classList.add('sidebar-open'); }
     function closeSidebar() { document.body.classList.remove('sidebar-open'); }
     sidebarToggle.addEventListener('click', openSidebar);
     sidebarClose.addEventListener('click', closeSidebar);
+    sidebarOverlay.addEventListener('click', closeSidebar);
+
+    // Escape key to close sidebar
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+            closeSidebar();
+        }
+    });
 
     btnSaveWorkflow.addEventListener('click', () => {
         const name = workflowNameInput.value.trim();

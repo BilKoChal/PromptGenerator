@@ -44,9 +44,7 @@ body {
     -webkit-font-smoothing: antialiased;
     transition: margin-left 0.3s ease;
 }
-body.sidebar-open {
-    margin-left: var(--sidebar-width);
-}
+/* Removed: body.sidebar-open margin-left to prevent double-shift with container margin */
 
 /* Sidebar Toggle */
 .sidebar-toggle {
@@ -65,7 +63,7 @@ body.sidebar-open {
     align-items: center;
     justify-content: center;
     box-shadow: var(--shadow-sm);
-    transition: all var(--transition);
+    transition: left 0.3s ease, background var(--transition), box-shadow var(--transition);
 }
 .sidebar-toggle:hover {
     background: #f9fafb;
@@ -79,7 +77,7 @@ body.sidebar-open .sidebar-toggle {
 .sidebar {
     position: fixed;
     top: 0;
-    left: -var(--sidebar-width);
+    left: calc(-1 * var(--sidebar-width));
     width: var(--sidebar-width);
     height: 100vh;
     background: var(--card-bg);
@@ -93,6 +91,24 @@ body.sidebar-open .sidebar-toggle {
 }
 body.sidebar-open .sidebar {
     left: 0;
+}
+
+/* Sidebar overlay backdrop */
+.sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+body.sidebar-open .sidebar-overlay {
+    opacity: 1;
+    visibility: visible;
 }
 .sidebar-header {
     display: flex;
@@ -564,6 +580,8 @@ select {
 
 /* Responsive */
 @media (max-width: 600px) {
+    body.sidebar-open { margin-left: 0; }
+    body.sidebar-open .container { margin-left: 0; }
     body { padding: 10px; }
     .container { gap: 14px; }
     .card { padding: 16px; border-radius: var(--radius); }
