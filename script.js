@@ -300,6 +300,7 @@
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
     const TEMPLATES_KEY = 'prompt_generator_templates';
     const THEME_KEY = 'prompt_generator_theme';
+    const SETTINGS_KEY = 'prompt_generator_settings';  // [S6] customizable output text overrides (separate from main state)
     const SCHEMA = 6;
 
     function defaultMode() {
@@ -322,9 +323,83 @@
             activeModeId: null,
             multiModeEnabled: false,
             nodes: nodes,  // same reference as modes[0].nodes
+            settings: {},  // [S1/S6] per-component output-text overrides; empty = all defaults
         };
     }
     let state = defaultState();
+
+    // ══════════════════════════════════════
+    // [S1] Settings data model — single source of truth for every
+    // non-user-entered string the output can emit. Strings that vary by
+    // verbosity store a `compact`/`explicit` pair where relevant.
+    // User overrides live in state.settings; getSetting() falls back here.
+    // ══════════════════════════════════════
+    const DEFAULT_SETTINGS = {
+        role: {
+            label: 'ROLE',
+            explicitPrefix: 'You are a ',
+            explicitSuffix: '.',
+            capsStyle: 'brackets',                 // 'brackets' | 'inline' | 'none'
+            capWords: { agentic: 'agentic', subagent: 'can-spawn-subagents', verbose: 'verbose', strict: 'strict' },
+            // [S4] per-preset full text, keyed by the short label shown in the dropdown
+            presets: {
+                'Senior Software Engineer': 'Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)',
+                'Code Reviewer': 'Code Reviewer (meticulous, checks security, performance & readability)',
+                'DevOps Engineer': 'DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)',
+                'Security Analyst': 'Security Analyst (finds vulnerabilities, OWASP top 10, threat modeling)',
+                'QA Tester': 'QA Tester (automated testing, edge cases, regression suites)',
+                'Technical Writer': 'Technical Writer (clear docs, tutorials, API references)',
+                'Data Scientist': 'Data Scientist (ML pipelines, data cleaning, model evaluation)',
+                'Product Manager': 'Product Manager (user stories, roadmapping, prioritization)',
+                'Frontend Developer': 'Frontend Developer (React, Vue, CSS, responsive UI, accessibility)',
+                'Backend Developer': 'Backend Developer (APIs, databases, auth, server-side logic)',
+                'Full-Stack Developer': 'Full-Stack Developer (end-to-end, database to UI)',
+                'Solutions Architect': 'Solutions Architect (system design, tech evaluation, scalability)',
+                'Database Administrator': 'Database Administrator (schema, migrations, performance, replication)',
+                'UX Designer': 'UX Designer (wireframes, prototypes, usability testing)',
+                'API Designer': 'API Designer (RESTful, GraphQL, versioning, DX)',
+                'Site Reliability Engineer': 'Site Reliability Engineer (uptime, SLOs, monitoring, alerting)',
+            },
+        },
+        context: { compactLabel: 'CONTEXT', explicitLabel: 'CONTEXT', projectKey: 'project', stackKey: 'stack', rulesKey: 'rules', outputKey: 'output', mdHeading: 'Context & Constraints' },
+        vars: { compactLabel: 'VARS', explicitHeading: 'VARIABLES (use ${name} to reference in steps)', mdHeading: 'Variables' },
+        resources: { compactLabel: 'RESOURCES (referenced below by @name):', explicitLeadIn: 'The following resources are available; reference them with @name.', mdHeading: 'Resources' },
+        memory: { label: 'MEMORY', instruction: 'Save this entire prompt as "{file}" and re-read it at the start of every new request. Never discard or summarize it.' },
+        mode: { compactLabel: 'MODE', flagLabel: 'Flag', stepsLabel: 'STEPS', emptyStepsLabel: '(no steps)', mdTasksLead: 'Perform the following in order:', mdEmptyLabel: '(no tasks defined)' },
+        // Verbs derived from TASK_TYPES so they never desync; still overridable individually.
+        verbs: Object.fromEntries(TASK_TYPES.map(t => [t.value, t.verb])),
+        gate: { compactLabel: 'GATE', explicitStopWord: 'STOP', explicitInstruction: 'Wait for explicit user confirmation before continuing. Do NOT proceed past this point until the user replies.', confirmWord: 'Confirm', rejectWord: 'If rejected' },
+        loop: { forEach: 'FOR EACH', while: 'WHILE', repeat: 'REPEAT', in: 'IN', times: 'TIMES', maxLabel: 'max', untilLabel: 'until', atMostTpl: 'at most {n} cycles', checkTpl: 'After each iteration, check: "{cond}". If the condition is met, exit the loop early and continue to the next step.' },
+        cond: { if: 'IF', elseIf: 'ELSE IF', else: 'ELSE', then: 'THEN' },
+        subagent: { compactSpawn: 'SPAWN sub-agents', explicitParallel: 'SPAWN the following sub-agents AT THE SAME TIME (in parallel). Each works independently and returns its own report:', explicitSequential: 'RUN the following sub-agents ONE AT A TIME, in order; each finishes before the next starts:', agentWord: 'Agent', domainLabel: 'domain', rationaleLabel: 'Rationale', reportLabel: 'Write report to', primaryTag: 'PRIMARY', agenticTag: 'agentic', verboseTag: 'verbose' },
+        parallel: { label: 'PARALLEL', branchWord: 'branch' },
+        route: { compactLabel: 'ROUTE on', caseWord: 'case', defaultWord: 'default', explicitLead: 'DECIDE based on', explicitMatchTpl: 'If the request matches "{label}"{match}:', explicitOtherwise: 'Otherwise:' },
+        section: { label: 'PHASE', goalLabel: 'Goal', exitCompact: 'Exit when', exitExplicit: 'Do not leave this phase until' },
+        ask: { compactLabel: 'ASK USER', explicitSingle: 'ASK THE USER the following question(s) in a SINGLE message and WAIT for their answer:', explicitSeparate: 'ASK THE USER the following question(s) in separate messages and WAIT for their answer:', optionsLabel: 'Options', orOther: 'or Other', freeText: 'free text answer', saveToLabel: 'Save answer to', suggestDefaultLabel: 'Suggest best-practice default.' },
+        table: { rowWord: 'Row' },
+        package: { explicitLead: 'PACKAGE — Collect the files listed below and bundle them into a single archive named "{name}", reproducing EXACTLY this folder structure:', noteLabel: 'Note' },
+    };
+
+    // [S1] Resolve a dot-path setting: user override wins, else DEFAULT_SETTINGS.
+    function getSetting(path) {
+        const keys = String(path).split('.');
+        const ov = keys.reduce((o, k) => (o == null ? o : o[k]), state.settings);
+        if (ov !== undefined && ov !== null) return ov;
+        const def = keys.reduce((o, k) => (o == null ? o : o[k]), DEFAULT_SETTINGS);
+        return def == null ? '' : def;
+    }
+    // Template fill: fill('at most {n} cycles', {n:3}) → 'at most 3 cycles'
+    function fill(tpl, vars) { return String(tpl).replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] != null ? vars[k] : '')); }
+
+    // [S6] Settings persistence — separate key for clean import/export.
+    function loadSettings() {
+        try { const raw = localStorage.getItem(SETTINGS_KEY); if (raw) state.settings = JSON.parse(raw) || {}; } catch (e) { state.settings = {}; }
+    }
+    let settingsTimer;
+    function saveSettings() {
+        clearTimeout(settingsTimer);
+        settingsTimer = setTimeout(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings || {})); } catch (e) {} }, 150);
+    }
 
     // ──────────────────────────────────────
     // Mode helpers
@@ -2867,6 +2942,7 @@
     // ──────────────────────────────────────
     applyTheme((function () { try { return localStorage.getItem(THEME_KEY) || 'light'; } catch (e) { return 'light'; } })());
     loadState();
+    loadSettings();   // [S6] load output-text overrides (after loadState so the dedicated key is authoritative)
     updateAllUI();
     renderTemplateList();
     renderWorkflowList();
