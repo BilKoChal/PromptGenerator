@@ -186,7 +186,7 @@
     const STORAGE_KEY = 'prompt_generator_state_v5';
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
     const THEME_KEY = 'prompt_generator_theme';
-    const SCHEMA = 2;
+    const SCHEMA = 3;
 
     function defaultState() {
         return {
@@ -196,6 +196,8 @@
             agentic: false, subagent: false, verbose: false, strict: false,
             contextProject: '', contextTech: '', contextConstraints: '', contextOutput: '',
             variables: [],
+            files: [],
+            selectedFileId: null,
             outputMode: 'pseudocode',
             nodes: [ makeTask('clone'), makeTask('analyze') ],
         };
@@ -230,6 +232,9 @@
             const saved = JSON.parse(raw);
             if (saved.schema === SCHEMA && Array.isArray(saved.nodes)) {
                 state = Object.assign(defaultState(), saved);
+                // Ensure files array exists for older v5 states without files
+                if (!state.files) state.files = [];
+                if (state.selectedFileId === undefined) state.selectedFileId = null;
             } else {
                 const legacy = localStorage.getItem('prompt_generator_state_v4') || localStorage.getItem('prompt_generator_state_v3');
                 migrate(saved.tasks ? saved : (legacy ? JSON.parse(legacy) : saved));
@@ -312,6 +317,14 @@
         let out = 'ROLE: ' + h.role + (h.caps.length ? '  [' + h.caps.join(', ') + ']' : '') + '\n';
         if (h.vars.length) out += 'VARS: ' + h.vars.map(v => v.name + '=' + (v.value || '?')).join('; ') + '\n';
         if (h.ctx.length) out += 'CONTEXT: ' + h.ctx.join('; ') + '\n';
+        // Files section
+        const allFiles = (state.files || []).filter(f => f.type === 'file');
+        if (allFiles.length) {
+            out += 'FILES: ' + allFiles.map(f => {
+                const path = getFilePath(f);
+                return path + (f.content ? (' (' + f.content.split('\n').length + ' lines)') : '');
+            }).join('; ') + '\n';
+        }
         out += '\nSTEPS\n';
         if (!state.nodes.length) out += '  (no steps)\n';
         else state.nodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
@@ -385,6 +398,17 @@
         if (state.strict)   md += '- **strict** — follow instructions exactly.\n';
         if (h.vars.length) { md += '\n## Variables\n'; h.vars.forEach(v => md += '- `' + v.name + '` = ' + (v.value || '_(unset)_') + '\n'); }
         if (h.ctx.length)  { md += '\n## Context & Constraints\n'; h.ctx.forEach(c => md += '- ' + c.replace('=', ': ') + '\n'); }
+        // Files section in Markdown
+        const mdFiles = (state.files || []).filter(f => f.type === 'file');
+        if (mdFiles.length) {
+            md += '\n## Project Files\n';
+            mdFiles.forEach(f => {
+                const path = getFilePath(f);
+                md += '- **`' + path + '`**';
+                if (f.content) md += ' (' + f.content.split('\n').length + ' lines)';
+                md += '\n';
+            });
+        }
         md += '\n## Tasks\nPerform the following in order:\n\n';
         if (!state.nodes.length) md += '_(no tasks defined)_\n';
         else state.nodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
@@ -469,7 +493,7 @@
             .replace(/^(# .+)$/gm, '<span class="md-h1">$1</span>')
             .replace(/^(## .+)$/gm, '<span class="md-h2">$1</span>')
             .replace(/^(### .+)$/gm, '<span class="md-h3">$1</span>')
-            .replace(/^(ROLE:|VARS:|CONTEXT:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
+            .replace(/^(ROLE:|VARS:|CONTEXT:|FILES:|STEPS)(.*)$/gm, '<span class="md-h2">$1</span>$2')
             .replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">**$1**</span>')
             .replace(/`([^`]+?)`/g, '<span class="md-code">`$1`</span>')
             .replace(/(\/\/[^\n]*)$/gm, '<span class="md-comment">$1</span>')
@@ -922,6 +946,255 @@
     });
 
     // ──────────────────────────────────────
+    // Files & Folders  [CRUD: Create, Read, Update, Delete, Rename]
+    // ──────────────────────────────────────
+    const fileTree = document.getElementById('fileTree');
+    const fileEditor = document.getElementById('fileEditor');
+    const fileEditorName = document.getElementById('fileEditorName');
+    const fileEditorContent = document.getElementById('fileEditorContent');
+    const btnCloseEditor = document.getElementById('btnCloseEditor');
+    const btnAddFile = document.getElementById('btnAddFile');
+    const btnAddFolder = document.getElementById('btnAddFolder');
+
+    // --- File node factories ---
+    function makeFileNode(name, parentId) {
+        return { id: uid('fl'), type: 'file', name: name || 'untitled.js', content: '', parentId: parentId || null, collapsed: false };
+    }
+    function makeFolderNode(name, parentId) {
+        return { id: uid('fd'), type: 'folder', name: name || 'new-folder', parentId: parentId || null, collapsed: false };
+    }
+
+    // --- File tree helpers ---
+    function getChildFiles(parentId) {
+        return (state.files || []).filter(f => f.parentId === parentId);
+    }
+    function getRootFiles() {
+        return getChildFiles(null);
+    }
+    function findFileNode(id) {
+        return (state.files || []).find(f => f.id === id) || null;
+    }
+    function isFolder(node) {
+        return node && node.type === 'folder';
+    }
+    function getFilePath(node) {
+        const parts = [];
+        let current = node;
+        while (current) {
+            parts.unshift(current.name);
+            current = findFileNode(current.parentId);
+        }
+        return parts.join('/');
+    }
+    function getAllDescendants(parentId) {
+        const result = [];
+        const children = getChildFiles(parentId);
+        children.forEach(child => {
+            result.push(child);
+            if (isFolder(child)) {
+                result.push(...getAllDescendants(child.id));
+            }
+        });
+        return result;
+    }
+    function getFileIcon(node) {
+        if (isFolder(node)) return node.collapsed ? '📁' : '📂';
+        const ext = (node.name || '').split('.').pop().toLowerCase();
+        const iconMap = { js: '📜', ts: '📘', jsx: '⚛️', tsx: '⚛️', py: '🐍', html: '🌐', css: '🎨', json: '📋', md: '📝', yml: '⚙️', yaml: '⚙️', sh: '🖥️', sql: '🗃️', env: '🔒', txt: '📄', gitignore: '🙈' };
+        return iconMap[ext] || '📄';
+    }
+
+    // --- Render file tree ---
+    function renderFileTree() {
+        fileTree.innerHTML = '';
+        const roots = getRootFiles();
+        if (!roots.length) {
+            fileTree.innerHTML = '<div class="file-tree-empty">No files yet. Add a file or folder above.</div>';
+            return;
+        }
+        renderFileLevel(roots, fileTree, 0);
+    }
+    function renderFileLevel(items, container, depth) {
+        // Sort: folders first, then files, alphabetically within each group
+        const sorted = [...items].sort((a, b) => {
+            if (isFolder(a) && !isFolder(b)) return -1;
+            if (!isFolder(a) && isFolder(b)) return 1;
+            return a.name.localeCompare(b.name);
+        });
+        sorted.forEach(node => {
+            const row = document.createElement('div');
+            row.className = 'file-item' + (state.selectedFileId === node.id ? ' selected' : '');
+            row.dataset.fileId = node.id;
+            row.style.paddingLeft = (10 + depth * 24) + 'px';
+
+            let html = '';
+            if (isFolder(node)) {
+                html += '<span class="folder-toggle' + (node.collapsed ? ' collapsed' : '') + '" data-action="toggleFolder">▾</span>';
+            } else {
+                html += '<span style="width:14px;flex-shrink:0;"></span>';
+            }
+            html += '<span class="file-item-icon">' + getFileIcon(node) + '</span>';
+            html += '<span class="file-item-name" data-action="selectFile">' + escapeHtml(node.name) + '</span>';
+            html += '<div class="file-item-actions">';
+            html += '<button class="btn-icon" data-action="renameFile" title="Rename" aria-label="Rename">✏️</button>';
+            if (isFolder(node)) {
+                html += '<button class="btn-icon" data-action="addFileToFolder" title="Add file to folder" aria-label="Add file to folder">📄</button>';
+                html += '<button class="btn-icon" data-action="addFolderToFolder" title="Add subfolder" aria-label="Add subfolder">📁</button>';
+            }
+            html += '<button class="btn-icon btn-remove" data-action="deleteFile" title="Delete" aria-label="Delete">✕</button>';
+            html += '</div>';
+
+            row.innerHTML = html;
+            container.appendChild(row);
+
+            // Render children if folder and not collapsed
+            if (isFolder(node) && !node.collapsed) {
+                const children = getChildFiles(node.id);
+                if (children.length) {
+                    renderFileLevel(children, container, depth + 1);
+                }
+            }
+        });
+    }
+
+    // --- File CRUD operations ---
+    function createFile(parentId) {
+        const node = makeFileNode('untitled.js', parentId);
+        state.files.push(node);
+        pushHistory(); renderFileTree(); saveState(); updatePreview();
+        // Auto-rename
+        startRename(node.id);
+    }
+    function createFolder(parentId) {
+        const node = makeFolderNode('new-folder', parentId);
+        state.files.push(node);
+        pushHistory(); renderFileTree(); saveState(); updatePreview();
+        // Auto-rename
+        startRename(node.id);
+    }
+    function deleteFileNode(id) {
+        const node = findFileNode(id);
+        if (!node) return;
+        const msg = isFolder(node)
+            ? 'Delete folder "' + node.name + '" and all its contents?'
+            : 'Delete "' + node.name + '"?';
+        if (!confirm(msg)) return;
+
+        // Collect self + all descendants
+        const toRemove = [id];
+        if (isFolder(node)) {
+            toRemove.push(...getAllDescendants(id).map(d => d.id));
+        }
+        state.files = state.files.filter(f => !toRemove.includes(f.id));
+        if (toRemove.includes(state.selectedFileId)) {
+            state.selectedFileId = null;
+            hideFileEditor();
+        }
+        pushHistory(); renderFileTree(); saveState(); updatePreview();
+        showToast('Deleted');
+    }
+    function startRename(id) {
+        const row = fileTree.querySelector('.file-item[data-file-id="' + id + '"]');
+        if (!row) return;
+        const nameSpan = row.querySelector('.file-item-name');
+        if (!nameSpan) return;
+        const node = findFileNode(id);
+        if (!node) return;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'file-item-name-input';
+        input.value = node.name;
+        nameSpan.replaceWith(input);
+        input.focus();
+        // Select name without extension
+        const dotIdx = node.name.lastIndexOf('.');
+        if (dotIdx > 0 && !isFolder(node)) input.setSelectionRange(0, dotIdx);
+        else input.select();
+
+        function finishRename() {
+            const newName = input.value.trim();
+            if (newName && newName !== node.name) {
+                node.name = newName;
+                pushHistory();
+                showToast('Renamed');
+            }
+            renderFileTree(); saveState(); updatePreview();
+            // Update editor if renaming the selected file
+            if (state.selectedFileId === id && !isFolder(node)) {
+                fileEditorName.textContent = getFilePath(node);
+            }
+        }
+        input.addEventListener('blur', finishRename);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { input.value = node.name; input.blur(); }
+        });
+    }
+    function selectFile(id) {
+        const node = findFileNode(id);
+        if (!node || isFolder(node)) return;
+        state.selectedFileId = id;
+        renderFileTree();
+        showFileEditor(node);
+    }
+    function showFileEditor(node) {
+        fileEditor.style.display = '';
+        fileEditorName.textContent = getFilePath(node);
+        fileEditorContent.value = node.content || '';
+    }
+    function hideFileEditor() {
+        fileEditor.style.display = 'none';
+        fileEditorContent.value = '';
+        fileEditorName.textContent = '';
+    }
+    function toggleFolder(id) {
+        const node = findFileNode(id);
+        if (!node || !isFolder(node)) return;
+        node.collapsed = !node.collapsed;
+        renderFileTree(); saveState();
+    }
+
+    // --- File tree event delegation ---
+    fileTree.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const row = btn.closest('.file-item');
+        if (!row) return;
+        const id = row.dataset.fileId;
+        const action = btn.dataset.action;
+
+        if (action === 'toggleFolder') toggleFolder(id);
+        else if (action === 'selectFile') selectFile(id);
+        else if (action === 'renameFile') startRename(id);
+        else if (action === 'deleteFile') deleteFileNode(id);
+        else if (action === 'addFileToFolder') createFile(id);
+        else if (action === 'addFolderToFolder') createFolder(id);
+    });
+    // Double-click to rename
+    fileTree.addEventListener('dblclick', (e) => {
+        const nameSpan = e.target.closest('.file-item-name');
+        if (!nameSpan) return;
+        const row = nameSpan.closest('.file-item');
+        if (!row) return;
+        startRename(row.dataset.fileId);
+    });
+
+    // --- File editor events ---
+    fileEditorContent.addEventListener('input', () => {
+        if (!state.selectedFileId) return;
+        const node = findFileNode(state.selectedFileId);
+        if (node) { node.content = fileEditorContent.value; saveState(); updatePreview(); }
+    });
+    btnCloseEditor.addEventListener('click', () => {
+        state.selectedFileId = null;
+        hideFileEditor();
+        renderFileTree();
+    });
+    btnAddFile.addEventListener('click', () => createFile(null));
+    btnAddFolder.addEventListener('click', () => createFolder(null));
+
+    // ──────────────────────────────────────
     // Top-level listeners
     // ──────────────────────────────────────
     roleSelect.addEventListener('change', () => {
@@ -961,6 +1234,12 @@
         contextOutput.value = state.contextOutput || '';
         modeToggle.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.outputMode));
         renderVariables();
+        renderFileTree();
+        if (state.selectedFileId) {
+            const selNode = findFileNode(state.selectedFileId);
+            if (selNode && !isFolder(selNode)) showFileEditor(selNode);
+            else hideFileEditor();
+        } else { hideFileEditor(); }
         renderTasks();
     }
 
