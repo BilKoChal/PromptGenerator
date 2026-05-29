@@ -8,8 +8,11 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Sidebar Toggle Button -->
-    <button id="sidebarToggle" class="sidebar-toggle" title="Saved Workflows">☰</button>
+    <!-- Sidebar Toggle / Close Button -->
+    <button id="sidebarToggle" class="sidebar-toggle" title="Saved Workflows">
+        <span class="toggle-icon-open">☰</span>
+        <span class="toggle-icon-close">✕</span>
+    </button>
 
     <!-- Sidebar Overlay (click to close) -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -18,88 +21,146 @@
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
             <h2>💾 Saved Workflows</h2>
-            <button id="sidebarClose" class="btn-icon" title="Close">✕</button>
         </div>
         <div class="sidebar-body">
             <div class="save-section">
                 <input type="text" id="workflowName" placeholder="Workflow name..." class="sidebar-input">
-                <button id="btnSaveWorkflow" class="btn btn-save">💾 Save Current</button>
+                <button id="btnSaveWorkflow" class="btn btn-save">💾 Save</button>
             </div>
             <div class="workflow-list" id="workflowList"></div>
             <div class="sidebar-footer">
                 <button id="btnExportAll" class="btn btn-outline-small">📤 Export All</button>
-                <button id="btnImportFile" class="btn btn-outline-small">📥 Import File</button>
+                <button id="btnImportFile" class="btn btn-outline-small">📥 Import</button>
                 <input type="file" id="importFileInput" accept=".json" hidden>
             </div>
         </div>
     </aside>
 
-    <!-- Main Container -->
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1><span class="icon">⚡</span>Prompt Generator</h1>
-            <p class="subtitle">Build structured prompts for AI agents — no AI required</p>
-        </div>
-
-        <!-- Role Section -->
-        <div class="card" id="roleCard">
-            <div class="card-header">
-                <span class="section-icon icon-role">🎭</span> AI / Agent Role
+    <!-- Main Layout -->
+    <div class="main-layout">
+        <!-- Left Column: Builder -->
+        <div class="builder-column">
+            <!-- Header -->
+            <div class="header">
+                <h1><span class="icon">⚡</span>Prompt Generator</h1>
+                <p class="subtitle">Build structured prompts for AI agents — no AI required</p>
             </div>
-            <div class="role-row">
-                <div class="role-select-wrap">
-                    <label for="roleSelect">Select Role</label>
-                    <select id="roleSelect">
-                        <option value="Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)">Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)</option>
-                        <option value="Code Reviewer (meticulous, checks security, performance & readability)">Code Reviewer (meticulous, checks security, performance & readability)</option>
-                        <option value="DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)">DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)</option>
-                        <option value="Security Analyst (finds vulnerabilities, OWASP top 10, threat modeling)">Security Analyst (finds vulnerabilities, OWASP top 10, threat modeling)</option>
-                        <option value="QA Tester (automated testing, edge cases, regression suites)">QA Tester (automated testing, edge cases, regression suites)</option>
-                        <option value="Technical Writer (clear docs, tutorials, API references)">Technical Writer (clear docs, tutorials, API references)</option>
-                        <option value="Data Scientist (ML pipelines, data cleaning, model evaluation)">Data Scientist (ML pipelines, data cleaning, model evaluation)</option>
-                        <option value="Product Manager (user stories, roadmapping, prioritization)">Product Manager (user stories, roadmapping, prioritization)</option>
-                        <option value="custom">✨ Custom Role...</option>
-                    </select>
+
+            <!-- Role Section -->
+            <div class="card" id="roleCard">
+                <div class="card-header">
+                    <span class="section-icon icon-role">🎭</span> AI / Agent Role
                 </div>
-                <div class="custom-role-wrap" id="customRoleWrap">
-                    <label for="customRoleInput">Custom Role</label>
-                    <input type="text" id="customRoleInput" class="custom-role-input" placeholder="e.g., Senior React Developer specializing in accessibility...">
+                <div class="role-row">
+                    <div class="role-select-wrap">
+                        <label for="roleSelect">Select Role</label>
+                        <select id="roleSelect">
+                            <option value="Senior Software Engineer (full-stack, React/Node.js, writes production-grade code)">Senior Software Engineer</option>
+                            <option value="Code Reviewer (meticulous, checks security, performance & readability)">Code Reviewer</option>
+                            <option value="DevOps Engineer (CI/CD, Docker, AWS, infrastructure-as-code)">DevOps Engineer</option>
+                            <option value="Security Analyst (finds vulnerabilities, OWASP top 10, threat modeling)">Security Analyst</option>
+                            <option value="QA Tester (automated testing, edge cases, regression suites)">QA Tester</option>
+                            <option value="Technical Writer (clear docs, tutorials, API references)">Technical Writer</option>
+                            <option value="Data Scientist (ML pipelines, data cleaning, model evaluation)">Data Scientist</option>
+                            <option value="Product Manager (user stories, roadmapping, prioritization)">Product Manager</option>
+                            <option value="Frontend Developer (React, Vue, CSS, responsive UI, accessibility)">Frontend Developer</option>
+                            <option value="Backend Developer (APIs, databases, auth, server-side logic)">Backend Developer</option>
+                            <option value="Full-Stack Developer (end-to-end, database to UI)">Full-Stack Developer</option>
+                            <option value="Solutions Architect (system design, tech evaluation, scalability)">Solutions Architect</option>
+                            <option value="Database Administrator (schema, migrations, performance, replication)">Database Administrator</option>
+                            <option value="UX Designer (wireframes, prototypes, usability testing)">UX Designer</option>
+                            <option value="API Designer (RESTful, GraphQL, versioning, DX)">API Designer</option>
+                            <option value="Site Reliability Engineer (uptime, SLOs, monitoring, alerting)">Site Reliability Engineer</option>
+                            <option value="custom">✨ Custom Role...</option>
+                        </select>
+                    </div>
+                    <div class="custom-role-wrap" id="customRoleWrap">
+                        <label for="customRoleInput">Custom Role</label>
+                        <input type="text" id="customRoleInput" class="custom-role-input" placeholder="e.g., Senior React Developer specializing in accessibility...">
+                    </div>
+                </div>
+                <div class="role-checkboxes">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chkAgentic"> Agentic (autonomous tasks)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chkSubagent"> Subagent (spawn sub-agents)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chkVerbose"> Verbose (explain reasoning)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chkStrict"> Strict (follow instructions exactly)
+                    </label>
                 </div>
             </div>
-            <div class="role-checkboxes">
-                <label class="checkbox-label">
-                    <input type="checkbox" id="chkAgentic"> Agentic (you can perform agentic tasks)
-                </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="chkSubagent"> Subagent (you can call sub‑agents)
-                </label>
+
+            <!-- Context Section -->
+            <div class="card" id="contextCard">
+                <div class="card-header">
+                    <span class="section-icon icon-context">🌐</span> Context & Constraints
+                </div>
+                <div class="context-fields">
+                    <div class="context-field">
+                        <label for="contextProject">Project / Domain</label>
+                        <input type="text" id="contextProject" placeholder="e.g., E-commerce platform, Mobile app, Microservices...">
+                    </div>
+                    <div class="context-field">
+                        <label for="contextTech">Tech Stack</label>
+                        <input type="text" id="contextTech" placeholder="e.g., React, Node.js, PostgreSQL, Docker...">
+                    </div>
+                    <div class="context-field">
+                        <label for="contextConstraints">Constraints & Rules</label>
+                        <textarea id="contextConstraints" placeholder="e.g., Must be backward compatible, No external dependencies, Max 200 lines per file..." rows="2"></textarea>
+                    </div>
+                    <div class="context-field">
+                        <label for="contextOutput">Output Format</label>
+                        <select id="contextOutput">
+                            <option value="">Default (Markdown)</option>
+                            <option value="code_only">Code Only (no explanations)</option>
+                            <option value="step_by_step">Step-by-Step with Explanations</option>
+                            <option value="json">JSON Structured Output</option>
+                            <option value="bullet_points">Bullet Points Summary</option>
+                            <option value="table">Table Format</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tasks Section -->
+            <div class="card" id="tasksCard">
+                <div class="card-header">
+                    <span class="section-icon icon-tasks">📋</span> Task Steps
+                    <span class="drag-hint">Drag via ⋮⋮ handle to reorder</span>
+                </div>
+                <div class="task-list" id="taskList"></div>
+                <div class="add-buttons">
+                    <button class="btn btn-add" id="btnAddTask">
+                        <span class="plus-icon">+</span> Add Task
+                    </button>
+                    <button class="btn btn-add-if" id="btnAddIf">
+                        <span class="plus-icon">⑂</span> Add If/Else
+                    </button>
+                    <button class="btn btn-add-loop" id="btnAddLoop">
+                        <span class="plus-icon">↻</span> Add Loop
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- Tasks Section -->
-        <div class="card" id="tasksCard">
-            <div class="card-header">
-                <span class="section-icon icon-tasks">📋</span> Task Steps
-                <span class="drag-hint">Drag via ⋮⋮ handle to reorder</span>
-            </div>
-            <div class="task-list" id="taskList"></div>
-            <button class="btn btn-add" id="btnAddTask">
-                <span class="plus-icon">+</span> Add Task Step
-            </button>
-        </div>
-
-        <!-- Preview Section -->
-        <div class="card" id="previewCard">
-            <div class="card-header">
-                <span class="section-icon icon-preview">📄</span> Generated Prompt
-                <span class="file-type-badge">Markdown</span>
-            </div>
-            <div class="preview-block" id="previewBlock"></div>
-            <div class="btn-group">
-                <button class="btn btn-copy" id="btnCopy">📋 Copy to Clipboard</button>
-                <button class="btn btn-download" id="btnDownload">💾 Download .md</button>
-                <button class="btn btn-outline" id="btnReset">🔄 Reset All</button>
+        <!-- Right Column: Preview -->
+        <div class="preview-column" id="previewColumn">
+            <div class="card preview-card" id="previewCard">
+                <div class="card-header">
+                    <span class="section-icon icon-preview">📄</span> Generated Prompt
+                    <span class="file-type-badge">Markdown</span>
+                </div>
+                <div class="preview-block" id="previewBlock"></div>
+                <div class="btn-group">
+                    <button class="btn btn-copy" id="btnCopy">📋 Copy</button>
+                    <button class="btn btn-download" id="btnDownload">💾 Download .md</button>
+                    <button class="btn btn-outline" id="btnReset">🔄 Reset All</button>
+                </div>
             </div>
         </div>
     </div>
