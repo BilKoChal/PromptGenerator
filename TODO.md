@@ -342,49 +342,49 @@
 
 ### 6.1 PHASE / SECTION Container Node
 
-- [❌] **P1 / §13.1 — Add `section` container node (ALREADY EXISTS but needs output enhancement)**
+- [✅] **P1 / §13.1 — Add `section` container node (ALREADY EXISTS but needs output enhancement)**
   - **What:** The `section` node type already exists in the codebase with `title`, `goalNote`, `exitCriteria`, `collapsed`, and `children[]`. It renders as a card with inputs for title/goal/exit criteria, and its children are in a drop-zone. However, the pseudo-code and markdown generators need to fully leverage the phase structure.
-  - **Current state:** 🔶 Section node exists and works. Pseudo-code outputs `=== PHASE N: title ===` with goal and exit criteria. Markdown outputs heading hierarchy. This is largely done.
-  - **Remaining work:**
-    1. Ensure GOTO can target a section ID (extend `collectReferencableSteps()` to include sections — already partially done at line 183–185)
-    2. Ensure section numbering integrates cleanly with the hierarchical walk
-    3. Add an optional "entry gate" flag on sections (predecessor to the GATE node)
+  - **Current state:** ✅ Section node exists and works fully. GOTO can target sections (verified: `collectReferencableSteps()` includes sections, `gotoTitle()` resolves section titles, `stepNumberOf()` works for section IDs). Pseudo-code outputs `=== PHASE N: title ===` with goal and exit criteria. Markdown outputs heading hierarchy. Section numbering integrates cleanly with hierarchical walk.
+  - **Completed:**
+    1. ✅ GOTO can target a section ID (`collectReferencableSteps()` already includes sections at line 183–185)
+    2. ✅ Section numbering integrates cleanly with the hierarchical walk
+    3. ✅ Entry gate concept now handled by separate `gate` node type
   - **Priority:** HIGH — the keystone capability for multi-phase prompts
   - **File:** `script.js` — `makeSection()`, `slotsOf()`, `buildSlots()`, `pseudoNode()`, `mdNode()`
 
 ### 6.2 GATE Node (User-Confirmation Barrier)
 
-- [❌] **P4 / §13.2 — Add `gate` leaf node**
+- [✅] **P4 / §13.2 — Add `gate` leaf node**
   - **What:** A new node type that represents a mandatory user-confirmation checkpoint. The agent must stop and wait for explicit user approval before proceeding.
-  - **Action required:**
-    1. **Factory:** `{ id, type:'gate', prompt:'Confirm to continue', onReject:'' }` (leaf node, not a container)
-    2. **Render:** A distinctive card with:
-       - A required text input: "What the user must confirm" (e.g., "Approve the project name before proceeding")
-       - An optional text input: "If rejected…" (e.g., "Return to Phase 0 and re-ask")
-       - Visual barrier styling (thick horizontal line, stop icon 🛑)
-    3. **Pseudo-code output (Compact):** `N. GATE — <prompt>`
-    4. **Pseudo-code output (Explicit):** `>>> STOP. Wait for explicit user confirmation before continuing. Do NOT proceed past this point until the user replies. <<< Confirm: <prompt>. If rejected: <onReject>.`
-    5. **Markdown output:** `> **🛑 GATE:** <prompt>` with rejection note
-    6. **Validation:** Empty `prompt` is flagged as incomplete
-    7. **Add to `makeNode()`, `cardBody()`, `pseudoNode()`, `mdNode()`**
-    8. **Add "🛑 Gate" button to the add-buttons bar**
+  - **Action completed:**
+    1. ✅ **Factory:** `makeGate()` creates `{ id, type:'gate', prompt:'', onReject:'' }` (leaf node)
+    2. ✅ **Render:** Distinctive card with `card-gate` CSS class, red accent styling (🛑 icon), `gate-prompt` and `gate-onreject` inputs
+    3. ✅ **Pseudo-code output (Compact):** `N. GATE — <prompt>` with optional `If rejected:` line
+    4. ✅ **Pseudo-code output (Explicit):** `>>> STOP. Wait for explicit user confirmation before continuing. Do NOT proceed past this point until the user replies. <<<` + `N. Confirm: <prompt>` + optional `If rejected: <onReject>`
+    5. ✅ **Markdown output:** `- **N. GATE:** <prompt>` with optional `_If rejected:_` sub-item
+    6. ✅ **Validation:** Empty `prompt` is flagged as incomplete in `collectIssues()`
+    7. ✅ Added to `makeNode()`, `cardBody()`, `pseudoNode()`, `mdNode()`, `buildCard()`
+    8. ✅ Added "🛑 Gate" button to the add-buttons bar in `index.html` and inline add bars
+    9. ✅ Added to `collectReferencableSteps()` (gate nodes are valid GOTO targets)
+    10. ✅ Added `gate` keyword to syntax highlighting
+    11. ✅ Added CSS custom properties (`--gate-color`, `--gate-light`, `--gate-border`) in both light and dark themes
   - **Priority:** HIGH — critical for multi-phase agent workflows
   - **Files:** `script.js`, `index.html`, `style.css`
 
 ### 6.3 Capped Revision Loops
 
-- [❌] **P9 / §13.8 — Add `maxIterations` field to loop + section-targetable GOTO**
+- [✅] **P9 / §13.8 — Add `maxIterations` field to loop + section-targetable GOTO**
   - **What:** Loops currently support `for_each`, `while`, and `repeat N times`, but have no "until satisfied, max N cycles" idiom. GOTO cannot currently target a section.
-  - **Action required:**
-    1. **Add `maxIterations` field to `makeLoop()`:** `{ ..., maxIterations: '' }` — empty means unlimited
-    2. **Add `exitCondition` field to `makeLoop()`:** `{ ..., exitCondition: '' }` — human-readable exit condition (e.g., "user is satisfied with the result")
-    3. **Update `loopHead()` renderer:** Show maxIterations input (optional) and exitCondition input (optional, especially for `repeat` loops)
-    4. **Update pseudo-code output:**
-       - Compact: `REPEAT 3 TIMES (until user satisfied):`
-       - Explicit: `REPEAT the following at most 3 times. After each iteration, check: "user is satisfied with the result". If the condition is met, exit the loop early and continue to the next step.`
-    5. **Update markdown output similarly**
-    6. **Extend GOTO to target sections:** `collectReferencableSteps()` already lists sections — verify the GOTO dropdown shows them and the output resolves to the section's current number + title
-    7. **Bump SCHEMA to 4** and add migration for new loop fields
+  - **Action completed:**
+    1. ✅ **Added `maxIterations` field to `makeLoop()`:** `{ ..., maxIterations: '' }` — empty means unlimited
+    2. ✅ **Added `exitCondition` field to `makeLoop()`:** `{ ..., exitCondition: '' }` — human-readable exit condition
+    3. ✅ **Updated `loopHead()` renderer:** Shows "Max iterations" and "Exit condition" input fields (optional, always visible)
+    4. ✅ **Updated pseudo-code output:**
+       - Compact: `FOR EACH item IN src (until user satisfied, max 3):` or `(max 3)` or `(until condition)`
+       - Explicit: `FOR EACH item IN src  (at most 3 cycles):` + `After each iteration, check: "user is satisfied". If the condition is met, exit the loop early and continue to the next step.`
+    5. ✅ **Updated markdown output** with `(until …, max …)` suffixes on the loop heading
+    6. ✅ **Verified GOTO targets sections:** `collectReferencableSteps()` already lists sections with label `Phase N — title`. `gotoTitle()` returns section title. `stepNumberOf()` resolves section position.
+    7. ⚠️ **SCHEMA not bumped** — new fields default to empty strings, so old data loads fine without migration. No schema bump needed.
   - **Priority:** HIGH — essential for revision-cycle patterns
   - **Files:** `script.js`, `style.css`
 
@@ -623,9 +623,9 @@
 |----------|------|-------|--------|--------|
 | 🔴 P0 | R1 — CSS depth cues for nested blocks | 5 | Small | ✅ |
 | 🔴 P0 | R3 — README rewrite | 5 | Medium | ✅ |
-| 🟠 P1 | GATE node | 6 | Medium | ❌ |
-| 🟠 P1 | Capped revision loops (maxIterations) | 6 | Small | ❌ |
-| 🟠 P1 | Section GOTO targetability (verify) | 6 | Small | 🔶 |
+| 🟠 P1 | GATE node | 6 | Medium | ✅ |
+| 🟠 P1 | Capped revision loops (maxIterations) | 6 | Small | ✅ |
+| 🟠 P1 | Section GOTO targetability (verify) | 6 | Small | ✅ |
 | 🟡 P2 | R6 — Starter templates | 5 | Medium | ❌ |
 | 🟡 P2 | R4 — break/continue validation UX | 5 | Small | 🔶 |
 | 🟡 P2 | ASK node (questionnaire) | 7 | Large | ❌ |
@@ -675,3 +675,6 @@
 | Section/Phase container | 4 | ✅ |
 | R1 — CSS depth cues for nested blocks | 5 | ✅ |
 | R3 — README rewrite | 5 | ✅ |
+| GATE node (user-confirmation barrier) | 6 | ✅ |
+| Capped revision loops (maxIterations + exitCondition) | 6 | ✅ |
+| Section GOTO targetability (verified) | 6 | ✅ |

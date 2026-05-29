@@ -19,6 +19,7 @@
     --loop-color: #0891b2; --loop-light: #ecfeff; --loop-border: #67e8f9;
     --sub-color: #db2777;  --sub-light: #fdf2f8;  --sub-border: #f9a8d4;
     --par-color: #ea580c;  --par-light: #fff7ed;  --par-border: #fdba74;
+    --gate-color: #dc2626; --gate-light: #fef2f2; --gate-border: #fca5a5;
     --hover-bg: #f0f2f5;
     --input-bg: #fafbfc;
     --code-bg: #1e1e2e;
@@ -44,6 +45,7 @@
     --primary-light: #2a2d4a;
     --danger-light: #3a2422;
     --if-light: #2a2440; --loop-light: #16323a; --sub-light: #3a1f30; --par-light: #3a2618;
+    --gate-light: #3a1f1f;
     --sec-light: #11302c;
     --hover-bg: #262a33;
     --input-bg: #23262f;
@@ -195,6 +197,7 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .btn-add-sub { background: var(--sub-color); } .btn-add-sub:hover { filter: brightness(1.08); }
 .btn-add-parallel { background: var(--par-color); } .btn-add-parallel:hover { filter: brightness(1.08); }
 .btn-add-section { background: var(--sec-color); } .btn-add-section:hover { filter: brightness(1.08); }
+.btn-add-gate { background: var(--gate-color); } .btn-add-gate:hover { filter: brightness(1.08); }
 
 /* ─── Task Card ─── */
 .task-card {
@@ -234,13 +237,17 @@ select { cursor: pointer; appearance: none; -webkit-appearance: none;
 .card-parallel .task-number { background: var(--par-color); }
 .card-section { border-color: var(--sec-border); background: var(--sec-light); border-left-width: 4px; }
 .card-section .task-number { background: var(--sec-color); }
+.card-gate { border-color: var(--gate-border); background: var(--gate-light); border-left-width: 4px; border-left-color: var(--gate-color); }
+.card-gate .task-number { background: var(--gate-color); }
 
 .block-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .label-if { color: var(--if-color); } .label-loop { color: var(--loop-color); }
 .label-subagent { color: var(--sub-color); } .label-parallel { color: var(--par-color); }
-.label-section { color: var(--sec-color); }
+.label-section { color: var(--sec-color); } .label-gate { color: var(--gate-color); }
 .section-title { width: 100%; font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; }
 .section-goal, .section-exit { width: 100%; font-size: 0.82rem; margin-bottom: 4px; }
+.gate-prompt { width: 100%; font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+.gate-onreject { width: 100%; font-size: 0.82rem; margin-bottom: 4px; color: var(--text-secondary); }
 .branch-section { color: var(--sec-color); }
 .condition-input { width: 100%; }
 .loop-fields { display: flex; gap: 8px; flex-wrap: wrap; }

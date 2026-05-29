@@ -63,6 +63,8 @@
 
     const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel'];
     const isContainer = (n) => CONTAINER_TYPES.includes(n.type);
+    // Leaf-only types (for reference, validation, etc.)
+    const LEAF_TYPES = ['task', 'gate'];
 
     // ──────────────────────────────────────
     // IDs (stable, collision-resistant)  [fixes B13]
@@ -82,7 +84,8 @@
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
-    function makeLoop()     { return { id: uid('lp'), type: 'loop', loopType: 'for_each', source: '', itemVar: 'item', collapsed: false, body: [] }; }
+    function makeLoop()     { return { id: uid('lp'), type: 'loop', loopType: 'for_each', source: '', itemVar: 'item', maxIterations: '', exitCondition: '', collapsed: false, body: [] }; }
+    function makeGate()     { return { id: uid('gt'), type: 'gate', prompt: '', onReject: '' }; }
     function makeAgent()    { return { id: uid('ag'), role: '', task: '', agentic: true, verbose: false, children: [] }; }
     function makeSubagent() { return { id: uid('sa'), type: 'subagent', execMode: 'parallel', collapsed: false, agents: [makeAgent()] }; }
     function makeParallel() { return { id: uid('pl'), type: 'parallel', collapsed: false, branches: [[], []] }; }
@@ -92,6 +95,7 @@
         if (kind === 'loop') return makeLoop();
         if (kind === 'subagent') return makeSubagent();
         if (kind === 'parallel') return makeParallel();
+        if (kind === 'gate') return makeGate();
         return makeTask();
     }
 
@@ -182,6 +186,8 @@
                 out.push({ id: n.id, label: 'Step ' + num + ' — ' + verb + (n.target ? ' ' + n.target.slice(0, 20) : '') });
             } else if (n.type === 'section') {
                 out.push({ id: n.id, label: 'Phase ' + num + ' — ' + (n.title || 'untitled').slice(0, 24) });
+            } else if (n.type === 'gate') {
+                out.push({ id: n.id, label: 'Step ' + num + ' — GATE ' + (n.prompt || 'confirm').slice(0, 20) });
             }
         });
         return out;
@@ -197,11 +203,12 @@
         const n = f.node;
         if (n.type === 'task') { const v = getVerb(n); return (v + (n.target ? ' ' + n.target : '')).slice(0, 40); }
         if (n.type === 'section') return n.title || 'section';
+        if (n.type === 'gate') return 'GATE: ' + (n.prompt || 'confirm');
         return n.type;
     }
     function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
     function reId(node) {
-        node.id = uid(node.type === 'task' ? 't' : node.type.slice(0, 2));
+        node.id = uid(node.type === 'task' ? 't' : node.type === 'gate' ? 'gt' : node.type.slice(0, 2));
         slotsOf(node).forEach(s => s.arr.forEach(reId));
         if (node.type === 'subagent') (node.agents || []).forEach(a => { a.id = uid('ag'); });
         return node;
@@ -472,6 +479,18 @@
             if (n.details && n.details.trim()) line += '  // ' + interp(n.details).trim().replace(/\n+/g, '; ');
             return line + '\n';
         }
+        if (n.type === 'gate') {
+            const prompt = n.prompt ? interp(n.prompt) : '<confirmation prompt?>';
+            if (isExplicit()) {
+                let s = ind + '>>> STOP. Wait for explicit user confirmation before continuing. Do NOT proceed past this point until the user replies. <<<\n';
+                s += ind + num + '. Confirm: ' + prompt + '\n';
+                if (n.onReject && n.onReject.trim()) s += ind + '   If rejected: ' + interp(n.onReject).trim() + '\n';
+                return s;
+            }
+            let s = ind + num + '. GATE — ' + prompt + '\n';
+            if (n.onReject && n.onReject.trim()) s += ind + '   If rejected: ' + interp(n.onReject).trim() + '\n';
+            return s;
+        }
         if (n.type === 'if') {
             let s = ind + num + '. IF ' + (n.condition ? interp(n.condition) : '<condition?>') + ':\n';
             s += slotPseudo(n.then, depth + 1, num);
@@ -487,7 +506,25 @@
             if (n.loopType === 'while') head = 'WHILE ' + (n.source ? interp(n.source) : '<condition?>');
             else if (n.loopType === 'repeat') head = 'REPEAT ' + (n.source ? interp(n.source) : '<n?>') + ' TIMES';
             else head = 'FOR EACH ' + (n.itemVar || 'item') + ' IN ' + (n.source ? interp(n.source) : '<collection?>');
-            return ind + num + '. ' + head + ':\n' + slotPseudo(n.body, depth + 1, num);
+            // maxIterations / exitCondition (P9)
+            const maxIter = n.maxIterations && n.maxIterations.trim();
+            const exitCond = n.exitCondition && n.exitCondition.trim();
+            if (isExplicit()) {
+                let s = ind + num + '. ' + head;
+                if (maxIter) s += '  (at most ' + interp(maxIter) + ' cycles)';
+                s += ':\n';
+                if (exitCond) s += ind + '   After each iteration, check: "' + interp(exitCond) + '". If the condition is met, exit the loop early and continue to the next step.\n';
+                s += slotPseudo(n.body, depth + 1, num);
+                return s;
+            }
+            // Compact mode
+            let s = ind + num + '. ' + head;
+            if (maxIter && exitCond) s += ' (until ' + interp(exitCond) + ', max ' + interp(maxIter) + ')';
+            else if (maxIter) s += ' (max ' + interp(maxIter) + ')';
+            else if (exitCond) s += ' (until ' + interp(exitCond) + ')';
+            s += ':\n';
+            s += slotPseudo(n.body, depth + 1, num);
+            return s;
         }
         if (n.type === 'subagent') {
             const mode = (n.execMode || 'parallel');
@@ -578,6 +615,12 @@
             if (n.details && n.details.trim()) interp(n.details).split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
             return s;
         }
+        if (n.type === 'gate') {
+            const prompt = n.prompt ? interp(n.prompt) : '(not specified)';
+            let s = ind + '- **' + num + '. GATE:** ' + prompt + '\n';
+            if (n.onReject && n.onReject.trim()) s += ind + '  - _If rejected:_ ' + interp(n.onReject).trim() + '\n';
+            return s;
+        }
         if (n.type === 'section') {
             const hashes = '#'.repeat(Math.min(6, depth + 2));
             let s = '\n' + hashes + ' Phase ' + num + ': ' + (n.title ? interp(n.title) : 'Untitled') + '\n';
@@ -597,6 +640,12 @@
             let head = n.loopType === 'while' ? 'WHILE `' + (n.source ? interp(n.source) : '?') + '`'
                 : n.loopType === 'repeat' ? 'REPEAT `' + (n.source ? interp(n.source) : '?') + '` TIMES'
                 : 'FOR EACH `' + (n.itemVar || 'item') + '` IN `' + (n.source ? interp(n.source) : '?') + '`';
+            // maxIterations / exitCondition (P9)
+            const maxIter = n.maxIterations && n.maxIterations.trim();
+            const exitCond = n.exitCondition && n.exitCondition.trim();
+            if (maxIter && exitCond) head += ' (until ' + interp(exitCond) + ', max ' + interp(maxIter) + ')';
+            else if (maxIter) head += ' (max ' + interp(maxIter) + ')';
+            else if (exitCond) head += ' (until ' + interp(exitCond) + ')';
             return ind + '- **' + num + '. ' + head + ':**\n' + slotMd(n.body, depth + 1, num);
         }
         if (n.type === 'subagent') {
@@ -642,6 +691,7 @@
                     else if ((n.action === 'break' || n.action === 'continue') && !inLoop) { missing++; badIds[n.id] = 1; }
                     else if (!NO_TARGET[n.action] && !(n.target || '').trim()) { missing++; badIds[n.id] = 1; }
                 }
+                if (n.type === 'gate' && !(n.prompt || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (n.type === 'if' && !(n.condition || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (n.type === 'loop' && !(n.source || '').trim()) { missing++; badIds[n.id] = 1; }
                 if (isContainer(n)) {
@@ -688,7 +738,7 @@
             .replace(/\$\{[A-Za-z0-9_]+(?::UNDEFINED)?\}/g, '<span class="md-var">$&</span>')
             .replace(/(^|[^A-Za-z0-9_@])@([A-Za-z0-9_]+(?::UNDEFINED)?)/g, '$1<span class="md-resource">@$2</span>')
             .replace(/&lt;([a-zA-Z?: ]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
-            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER)\b/g, '<span class="md-keyword">$1</span>');
+            .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER|GATE|STOP|Confirm)\b/g, '<span class="md-keyword">$1</span>');
     }
 
     // ──────────────────────────────────────
@@ -718,7 +768,8 @@
         card.className = 'task-card depth-' + Math.min(depth, 6) +
             (node.type === 'section' ? ' card-section' :
              node.type === 'if' ? ' card-if' : node.type === 'loop' ? ' card-loop' :
-             node.type === 'subagent' ? ' card-subagent' : node.type === 'parallel' ? ' card-parallel' : '');
+             node.type === 'subagent' ? ' card-subagent' : node.type === 'parallel' ? ' card-parallel' :
+             node.type === 'gate' ? ' card-gate' : '');
 
         card.innerHTML =
             '<span class="task-number">' + numberFor(node) + '</span>' +
@@ -742,6 +793,7 @@
 
     function cardBody(node) {
         if (node.type === 'task')     return taskFields(node);
+        if (node.type === 'gate')     return gateHead(node);
         if (node.type === 'section')  return sectionHead(node);
         if (node.type === 'if')       return ifHead(node);
         if (node.type === 'loop')     return loopHead(node);
@@ -755,6 +807,12 @@
             '<input type="text" class="section-title" data-field="title" value="' + attr(node.title) + '" placeholder="Phase title, e.g. Phase 0 — Rapid Prototype">' +
             '<input type="text" class="section-goal" data-field="goalNote" value="' + attr(node.goalNote) + '" placeholder="Goal of this phase (optional)">' +
             '<input type="text" class="section-exit" data-field="exitCriteria" value="' + attr(node.exitCriteria) + '" placeholder="Exit / done-when criteria (optional)">';
+    }
+
+    function gateHead(node) {
+        return '<div class="block-label label-gate">🛑 Gate — User Confirmation Barrier</div>' +
+            '<input type="text" class="gate-prompt" data-field="prompt" value="' + attr(node.prompt) + '" placeholder="What the user must confirm, e.g. Approve the project name">' +
+            '<input type="text" class="gate-onreject" data-field="onReject" value="' + attr(node.onReject) + '" placeholder="If rejected… (optional, e.g. Return to Phase 0)">';
     }
 
     function taskFields(node) {
@@ -805,6 +863,8 @@
                 '</select></div>' +
                 '<div class="loop-field"><label>' + srcLabel + '</label><input type="text" data-field="source" value="' + attr(node.source) + '" placeholder="' + attr(srcPh) + '"></div>' +
                 (lt === 'for_each' ? '<div class="loop-field"><label>Item var</label><input type="text" data-field="itemVar" value="' + attr(node.itemVar) + '" placeholder="item"></div>' : '') +
+                '<div class="loop-field"><label>Max iterations</label><input type="text" data-field="maxIterations" value="' + attr(node.maxIterations || '') + '" placeholder="optional, e.g. 3"></div>' +
+                '<div class="loop-field"><label>Exit condition</label><input type="text" data-field="exitCondition" value="' + attr(node.exitCondition || '') + '" placeholder="optional, e.g. user is satisfied"></div>' +
             '</div>';
     }
     function subagentHead(node) {
@@ -913,6 +973,7 @@
         bar.dataset.slot = slotKey;
         bar.innerHTML =
             '<button data-add="task">+ Task</button>' +
+            '<button data-add="gate">+ Gate</button>' +
             '<button data-add="section">+ Phase</button>' +
             '<button data-add="if">+ If</button>' +
             '<button data-add="loop">+ Loop</button>' +
@@ -1129,6 +1190,7 @@
     // add-block buttons (root level)
     document.getElementById('btnAddTask').addEventListener('click', () => addNodeTo(null, null, 'task'));
     document.getElementById('btnAddSection').addEventListener('click', () => addNodeTo(null, null, 'section'));
+    document.getElementById('btnAddGate').addEventListener('click', () => addNodeTo(null, null, 'gate'));
     document.getElementById('btnAddIf').addEventListener('click', () => addNodeTo(null, null, 'if'));
     document.getElementById('btnAddLoop').addEventListener('click', () => addNodeTo(null, null, 'loop'));
     document.getElementById('btnAddSub').addEventListener('click', () => addNodeTo(null, null, 'subagent'));

@@ -20,12 +20,18 @@ can copy or download. Everything runs client-side with no build step and no depe
 - **Task** — a single action (clone, analyze, implement, refactor, test, deploy,
   create/update/delete/rename a file or folder, custom, and more), plus `goto`,
   `break`, and `continue` control verbs. File/folder toggle on create/update/delete/rename.
+- **Gate** — a user-confirmation barrier that forces the agent to stop and wait
+  for explicit approval before proceeding. Has a required prompt ("what to confirm")
+  and an optional "if rejected" field. Renders as `GATE` in compact mode and a
+  full `STOP / WAIT` block in Explicit mode.
 - **Phase / Section** — a titled group of steps with an optional goal and exit
   criteria. Renders as `=== PHASE N: title ===` in pseudo-code. Nestable like any
   container.
 - **If / Else** — a condition with `THEN`, any number of `ELSE IF` branches, and an
   optional `ELSE`.
 - **Loop** — `FOR EACH`, `WHILE`, or `REPEAT N TIMES`, with a nestable body.
+  Optional `max iterations` cap and `exit condition` fields enable "repeat at most
+  N times, until condition is met" patterns for revision cycles.
 - **Sub-Agent** — one or more sub-agents, each with a role, objective, and its own
   nested steps, run either **in parallel** or **sequentially**.
 - **Parallel** — independent branches meant to run concurrently.
@@ -143,9 +149,10 @@ All application state revolves around a **recursive tree of nodes** stored in
 | Type | Container? | Key Fields | Slots (child arrays) |
 |------|-----------|------------|---------------------|
 | `task` | No | `action`, `target`, `details`, `targetType`, `gotoRef` | — |
+| `gate` | No | `prompt`, `onReject` | — |
 | `section` | Yes | `title`, `goalNote`, `exitCriteria`, `collapsed` | `children` |
 | `if` | Yes | `condition`, `collapsed` | `then`, `elseifs[].children`, `else` |
-| `loop` | Yes | `loopType`, `source`, `itemVar`, `collapsed` | `body` |
+| `loop` | Yes | `loopType`, `source`, `itemVar`, `maxIterations`, `exitCondition`, `collapsed` | `body` |
 | `subagent` | Yes | `execMode` (parallel/sequential), `collapsed` | `agents[].children` |
 | `parallel` | Yes | `collapsed` | `branches[]` |
 
