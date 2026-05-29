@@ -27,11 +27,11 @@
         },
         qa_tester: {
             name: 'QA / Test Engineer',
-            description: 'Designs and executes test strategies — unit, integration, E2E, and regression. Ensures software meets quality standards before release.'
+            description: 'Designs and executes test strategies \u2014 unit, integration, E2E, and regression. Ensures software meets quality standards before release.'
         },
         technical_writer: {
             name: 'Technical Writer',
-            description: 'Crafts clear, accurate documentation — API references, tutorials, architecture guides, and onboarding materials — for both technical and non-technical audiences.'
+            description: 'Crafts clear, accurate documentation \u2014 API references, tutorials, architecture guides, and onboarding materials \u2014 for both technical and non-technical audiences.'
         },
         data_scientist: {
             name: 'Data Scientist / ML Engineer',
@@ -51,7 +51,7 @@
         },
         fullstack_developer: {
             name: 'Full-Stack Developer',
-            description: 'Works across the entire stack — from database design and API development to UI implementation and deployment. Comfortable with both frontend and backend concerns.'
+            description: 'Works across the entire stack \u2014 from database design and API development to UI implementation and deployment. Comfortable with both frontend and backend concerns.'
         },
         solutions_architect: {
             name: 'Solutions Architect',
@@ -79,27 +79,27 @@
     // Task Type Definitions
     // ──────────────────────────────────────
     var TASK_TYPES = [
-        { value: 'clone', label: '\uD83D\uDCE5 Clone Repo', paramLabel: 'Repository URL',
+        { value: 'clone', label: 'Clone Repo', icon: '\uD83D\uDCE5', paramLabel: 'Repository URL',
             paramPlaceholder: 'https://github.com/user/repo.git' },
-        { value: 'analyze', label: '\uD83D\uDD0D Analyze', paramLabel: 'Target Files / Folders',
+        { value: 'analyze', label: 'Analyze', icon: '\uD83D\uDD0D', paramLabel: 'Target Files / Folders',
             paramPlaceholder: 'entire codebase or src/utils/' },
-        { value: 'research', label: '\uD83D\uDCDA Research', paramLabel: 'Research Topic',
+        { value: 'research', label: 'Research', icon: '\uD83D\uDCDA', paramLabel: 'Research Topic',
             paramPlaceholder: 'best practices for error handling in Rust...' },
-        { value: 'create_sub_agent', label: '\uD83E\uDD16 Create Sub-Agent', paramLabel: 'Sub-Agent Task',
+        { value: 'create_sub_agent', label: 'Create Sub-Agent', icon: '\uD83E\uDD16', paramLabel: 'Sub-Agent Task',
             paramPlaceholder: 'analyze the authentication module and report findings' },
-        { value: 'implement', label: '\uD83D\uDEE0\uFE0F Implement', paramLabel: 'Feature / Task',
+        { value: 'implement', label: 'Implement', icon: '\uD83D\uDEE0\uFE0F', paramLabel: 'Feature / Task',
             paramPlaceholder: 'user authentication with JWT' },
-        { value: 'refactor', label: '\u267B\uFE0F Refactor', paramLabel: 'Target Code',
+        { value: 'refactor', label: 'Refactor', icon: '\u267B\uFE0F', paramLabel: 'Target Code',
             paramPlaceholder: 'src/legacy/data-processor.js' },
-        { value: 'test', label: '\uD83E\uDDEA Test', paramLabel: 'Test Target',
+        { value: 'test', label: 'Test', icon: '\uD83E\uDDEA', paramLabel: 'Test Target',
             paramPlaceholder: 'the login flow and edge cases' },
-        { value: 'document', label: '\uD83D\uDCDD Document', paramLabel: 'Documentation Target',
+        { value: 'document', label: 'Document', icon: '\uD83D\uDCDD', paramLabel: 'Documentation Target',
             paramPlaceholder: 'all public API endpoints' },
-        { value: 'review', label: '\uD83D\uDC40 Review', paramLabel: 'Review Target',
+        { value: 'review', label: 'Review', icon: '\uD83D\uDC40', paramLabel: 'Review Target',
             paramPlaceholder: 'PR #42 or src/new-feature/' },
-        { value: 'deploy', label: '\uD83D\uDE80 Deploy', paramLabel: 'Deployment Target',
+        { value: 'deploy', label: 'Deploy', icon: '\uD83D\uDE80', paramLabel: 'Deployment Target',
             paramPlaceholder: 'staging server / AWS ECS' },
-        { value: 'custom_task', label: '\uD83D\uDCA1 Custom Task', paramLabel: 'Task Description',
+        { value: 'custom_task', label: 'Custom Task', icon: '\uD83D\uDCA1', paramLabel: 'Task Description',
             paramPlaceholder: 'describe what needs to be done...' },
     ];
 
@@ -165,7 +165,7 @@
                 }),
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-        } catch (e) { /* storage full or unavailable */ }
+        } catch (e) {}
     }
 
     function loadState() {
@@ -186,18 +186,22 @@
                             details: t.details || '',
                         };
                     });
-                    var maxId = Math.max.apply(null, state.tasks.map(function (t) { return t.id; }).concat([0]));
+                    var maxId = 0;
+                    state.tasks.forEach(function (t) { if (t.id > maxId) maxId = t.id; });
                     taskIdCounter = maxId + 1;
                 }
             }
-        } catch (e) { /* corrupted data, use defaults */ }
+        } catch (e) {}
     }
 
     // ──────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────
     function getTaskTypeDef(type) {
-        return TASK_TYPES.find(function (t) { return t.value === type; }) || TASK_TYPES[1];
+        for (var i = 0; i < TASK_TYPES.length; i++) {
+            if (TASK_TYPES[i].value === type) return TASK_TYPES[i];
+        }
+        return TASK_TYPES[1]; // default: analyze
     }
 
     function getEffectiveRole() {
@@ -229,17 +233,15 @@
         var role = getEffectiveRole();
         var md = '';
 
-        md += '# \uD83E\uDD16 Agent Prompt\n\n';
+        md += '# Agent Prompt\n\n';
         md += '## Role\n';
         md += 'You are a **' + role + '**.\n';
 
-        // Role description
         var desc = getRoleDescription();
         if (desc) {
             md += desc + '\n';
         }
 
-        // Capabilities
         var caps = [];
         if (state.agentic) caps.push('**Agentic**: You are authorized to autonomously plan, decide, and execute multi-step tasks without requiring human approval at each step.');
         if (state.subagent) caps.push('**Sub-agent**: You are authorized to spawn and coordinate sub-agents to handle specialized sub-tasks in parallel.');
@@ -259,9 +261,10 @@
                 var stepNum = index + 1;
                 var paramText = task.param.trim() || '(not specified)';
                 var detailsText = task.details.trim();
+                var label = def.icon + ' ' + def.label;
 
-                md += '### Step ' + stepNum + ': ' + def.label.replace(/^[^\s]+\s/, '') + '\n';
-                md += '- **' + def.label.replace(/^[^\s]+\s/, '') + '**: ';
+                md += '### Step ' + stepNum + ': ' + def.label + '\n';
+                md += '- **' + def.label + '**: ';
 
                 var actionMap = {
                     clone: 'Clone the repository from',
@@ -333,21 +336,25 @@
             var def = getTaskTypeDef(task.type);
             var card = document.createElement('div');
             card.className = 'task-card';
-            // NOT draggable by default — only via drag-handle
+            card.dragaggable = true; // Always draggable — dragstart checks flag
+            card.setAttribute('draggable', 'true');
             card.dataset.taskId = task.id;
             card.dataset.index = index;
+
+            var optionsHtml = '';
+            for (var i = 0; i < TASK_TYPES.length; i++) {
+                var t = TASK_TYPES[i];
+                var sel = (task.type === t.value) ? ' selected' : '';
+                optionsHtml += '<option value="' + t.value + '"' + sel + '>' + t.icon + ' ' + t.label + '</option>';
+            }
 
             card.innerHTML =
                 '<span class="task-number">' + (index + 1) + '</span>' +
                 '<div class="drag-handle" title="Drag to reorder">\u22EE\u22EE</div>' +
                 '<div class="task-content">' +
                     '<div class="task-top-row">' +
-                        '<select class="task-type-select" data-field="type">' +
-                            TASK_TYPES.map(function (t) {
-                                return '<option value="' + t.value + '"' + (task.type === t.value ? ' selected' : '') + '>' + t.label + '</option>';
-                            }).join('') +
-                        '</select>' +
-                        '<input type="text" class="task-param-input" data-field="param" value="' + escapeHtml(task.param) + '" placeholder="' + def.paramPlaceholder + '" title="' + def.paramLabel + '">' +
+                        '<select class="task-type-select" data-field="type">' + optionsHtml + '</select>' +
+                        '<input type="text" class="task-param-input" data-field="param" value="' + escapeHtml(task.param) + '" placeholder="' + escapeHtml(def.paramPlaceholder) + '" title="' + escapeHtml(def.paramLabel) + '">' +
                     '</div>' +
                     '<textarea class="task-details-input" data-field="details" placeholder="Additional details / notes (optional) \u2014 separate lines for multiple points..." rows="2">' + escapeHtml(task.details) + '</textarea>' +
                 '</div>' +
@@ -366,11 +373,11 @@
 
     function updateTaskNumbers() {
         var cards = taskList.querySelectorAll('.task-card');
-        cards.forEach(function (card, i) {
-            var badge = card.querySelector('.task-number');
+        for (var i = 0; i < cards.length; i++) {
+            var badge = cards[i].querySelector('.task-number');
             if (badge) badge.textContent = i + 1;
-            card.dataset.index = i;
-        });
+            cards[i].dataset.index = i;
+        }
     }
 
     // ──────────────────────────────────────
@@ -397,7 +404,10 @@
     }
 
     function removeTask(taskId) {
-        var index = state.tasks.findIndex(function (t) { return t.id === taskId; });
+        var index = -1;
+        for (var i = 0; i < state.tasks.length; i++) {
+            if (state.tasks[i].id === taskId) { index = i; break; }
+        }
         if (index === -1) return;
         if (state.tasks.length === 1) {
             state.tasks[0].param = '';
@@ -411,7 +421,10 @@
     }
 
     function moveTask(taskId, direction) {
-        var index = state.tasks.findIndex(function (t) { return t.id === taskId; });
+        var index = -1;
+        for (var i = 0; i < state.tasks.length; i++) {
+            if (state.tasks[i].id === taskId) { index = i; break; }
+        }
         if (index === -1) return;
         var newIndex = index + direction;
         if (newIndex < 0 || newIndex >= state.tasks.length) return;
@@ -422,82 +435,81 @@
     }
 
     function updateTaskField(taskId, field, value) {
-        var task = state.tasks.find(function (t) { return t.id === taskId; });
-        if (!task) return;
-        task[field] = value;
+        for (var i = 0; i < state.tasks.length; i++) {
+            if (state.tasks[i].id === taskId) {
+                state.tasks[i][field] = value;
+                break;
+            }
+        }
         updatePreview();
         saveState();
     }
 
     // ──────────────────────────────────────
-    // Drag and Drop — only from drag-handle
+    // Drag and Drop — handle-only via flag
     // ──────────────────────────────────────
     var draggedIndex = null;
     var draggedTaskId = null;
-    var isDragging = false;
+    var dragFromHandle = false; // KEY: set true only when mousedown is on a drag-handle
 
-    // Enable draggable ONLY when mouse is on the drag-handle
+    // On mousedown: check if it started on a drag-handle
     taskList.addEventListener('mousedown', function (e) {
-        var handle = e.target.closest('.drag-handle');
-        if (!handle) return;
-        var card = handle.closest('.task-card');
-        if (card) {
-            card.setAttribute('draggable', 'true');
-        }
+        dragFromHandle = !!e.target.closest('.drag-handle');
     });
 
-    taskList.addEventListener('mouseup', function () {
-        // Remove draggable from all cards
-        taskList.querySelectorAll('.task-card').forEach(function (c) {
-            c.setAttribute('draggable', 'false');
-        });
-    });
+    // Also handle touch for mobile
+    taskList.addEventListener('touchstart', function (e) {
+        dragFromHandle = !!e.target.closest('.drag-handle');
+    }, { passive: true });
 
     function handleDragStart(e) {
-        // Only allow if the event originated from a drag-handle
-        var handle = e.target.closest('.drag-handle');
-        if (!handle) {
+        // CRITICAL: Only allow drag if mousedown was on the drag-handle
+        if (!dragFromHandle) {
             e.preventDefault();
             return;
         }
+
         var card = e.target.closest('.task-card');
-        if (!card) { e.preventDefault(); return; }
+        if (!card) {
+            e.preventDefault();
+            return;
+        }
 
         draggedIndex = parseInt(card.dataset.index, 10);
         draggedTaskId = parseInt(card.dataset.taskId, 10);
         card.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', draggedTaskId.toString());
+        e.dataTransfer.setData('text/plain', String(draggedTaskId));
         var rect = card.getBoundingClientRect();
         e.dataTransfer.setDragImage(card, rect.width / 2, rect.height / 2);
         taskList.style.cursor = 'grabbing';
-        isDragging = true;
     }
 
     function handleDragEnd(e) {
         var card = e.target.closest('.task-card');
         if (card) card.classList.remove('dragging');
-        taskList.querySelectorAll('.task-card').forEach(function (c) {
-            c.classList.remove('drag-over-top', 'drag-over-bottom');
-            c.setAttribute('draggable', 'false');
-        });
+        var cards = taskList.querySelectorAll('.task-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.remove('drag-over-top', 'drag-over-bottom');
+        }
         taskList.style.cursor = '';
         draggedIndex = null;
         draggedTaskId = null;
-        isDragging = false;
+        dragFromHandle = false;
     }
 
     function handleDragOver(e) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         var card = e.target.closest('.task-card');
-        if (!card || !draggedTaskId) return;
+        if (!card || draggedTaskId === null) return;
 
         var targetId = parseInt(card.dataset.taskId, 10);
         if (targetId === draggedTaskId) {
-            taskList.querySelectorAll('.task-card').forEach(function (c) {
-                c.classList.remove('drag-over-top', 'drag-over-bottom');
-            });
+            var cards = taskList.querySelectorAll('.task-card');
+            for (var i = 0; i < cards.length; i++) {
+                cards[i].classList.remove('drag-over-top', 'drag-over-bottom');
+            }
             return;
         }
 
@@ -505,9 +517,10 @@
         var midY = rect.top + rect.height / 2;
         var isTopHalf = e.clientY < midY;
 
-        taskList.querySelectorAll('.task-card').forEach(function (c) {
-            c.classList.remove('drag-over-top', 'drag-over-bottom');
-        });
+        var allCards = taskList.querySelectorAll('.task-card');
+        for (var j = 0; j < allCards.length; j++) {
+            allCards[j].classList.remove('drag-over-top', 'drag-over-bottom');
+        }
 
         if (isTopHalf) {
             card.classList.add('drag-over-top');
@@ -526,9 +539,10 @@
     function handleDrop(e) {
         e.preventDefault();
         var card = e.target.closest('.task-card');
-        taskList.querySelectorAll('.task-card').forEach(function (c) {
-            c.classList.remove('drag-over-top', 'drag-over-bottom', 'dragging');
-        });
+        var allCards = taskList.querySelectorAll('.task-card');
+        for (var i = 0; i < allCards.length; i++) {
+            allCards[i].classList.remove('drag-over-top', 'drag-over-bottom', 'dragging');
+        }
         taskList.style.cursor = '';
 
         if (!card || draggedIndex === null || draggedTaskId === null) return;
@@ -536,45 +550,64 @@
         var targetId = parseInt(card.dataset.taskId, 10);
         if (targetId === draggedTaskId) return;
 
-        var targetIndex = state.tasks.findIndex(function (t) { return t.id === targetId; });
-        if (targetIndex === -1) return;
+        // Find target index in state
+        var targetIdx = -1;
+        for (var ti = 0; ti < state.tasks.length; ti++) {
+            if (state.tasks[ti].id === targetId) { targetIdx = ti; break; }
+        }
+        if (targetIdx === -1) return;
 
         var rect = card.getBoundingClientRect();
         var midY = rect.top + rect.height / 2;
         var isTopHalf = e.clientY < midY;
 
-        var draggedItem = state.tasks.find(function (t) { return t.id === draggedTaskId; });
+        // Find and remove dragged item
+        var draggedItem = null;
+        var sourceIdx = -1;
+        for (var si = 0; si < state.tasks.length; si++) {
+            if (state.tasks[si].id === draggedTaskId) { draggedItem = state.tasks[si]; sourceIdx = si; break; }
+        }
         if (!draggedItem) return;
-        var sourceIndex = state.tasks.findIndex(function (t) { return t.id === draggedTaskId; });
-        state.tasks.splice(sourceIndex, 1);
 
-        var insertIndex = state.tasks.findIndex(function (t) { return t.id === targetId; });
-        if (insertIndex === -1) insertIndex = state.tasks.length;
-        if (!isTopHalf) insertIndex++;
+        state.tasks.splice(sourceIdx, 1);
 
-        state.tasks.splice(insertIndex, 0, draggedItem);
+        // Recalculate insert index after removal
+        var insertIdx = -1;
+        for (var ii = 0; ii < state.tasks.length; ii++) {
+            if (state.tasks[ii].id === targetId) { insertIdx = ii; break; }
+        }
+        if (insertIdx === -1) insertIdx = state.tasks.length;
+        if (!isTopHalf) insertIdx++;
+
+        state.tasks.splice(insertIdx, 0, draggedItem);
         draggedIndex = null;
         draggedTaskId = null;
-        isDragging = false;
+        dragFromHandle = false;
         renderTasks();
     }
 
     function handleDropOnList(e) {
         if (e.target.closest('.task-card')) return;
         e.preventDefault();
-        taskList.querySelectorAll('.task-card').forEach(function (c) {
-            c.classList.remove('drag-over-top', 'drag-over-bottom', 'dragging');
-        });
+        var allCards = taskList.querySelectorAll('.task-card');
+        for (var i = 0; i < allCards.length; i++) {
+            allCards[i].classList.remove('drag-over-top', 'drag-over-bottom', 'dragging');
+        }
         taskList.style.cursor = '';
         if (draggedIndex === null || draggedTaskId === null) return;
-        var draggedItem = state.tasks.find(function (t) { return t.id === draggedTaskId; });
+
+        var draggedItem = null;
+        var sourceIdx = -1;
+        for (var si = 0; si < state.tasks.length; si++) {
+            if (state.tasks[si].id === draggedTaskId) { draggedItem = state.tasks[si]; sourceIdx = si; break; }
+        }
         if (!draggedItem) return;
-        var sourceIndex = state.tasks.findIndex(function (t) { return t.id === draggedTaskId; });
-        state.tasks.splice(sourceIndex, 1);
+
+        state.tasks.splice(sourceIdx, 1);
         state.tasks.push(draggedItem);
         draggedIndex = null;
         draggedTaskId = null;
-        isDragging = false;
+        dragFromHandle = false;
         renderTasks();
     }
 
@@ -584,6 +617,8 @@
     taskList.addEventListener('dragover', handleDragOver);
     taskList.addEventListener('dragleave', handleDragLeave);
     taskList.addEventListener('drop', handleDrop);
+
+    // Also handle drop on the task list container (when list is empty or dropping at end)
     taskList.addEventListener('dragover', function (e) {
         if (!e.target.closest('.task-card')) {
             e.preventDefault();
@@ -654,7 +689,6 @@
         } else {
             customRoleWrap.classList.remove('visible');
         }
-        // Update description
         var desc = getRoleDescription();
         if (desc) {
             roleDescription.textContent = desc;
@@ -720,12 +754,12 @@
     function setWorkflows(wf) {
         try {
             localStorage.setItem(WORKFLOW_STORAGE_KEY, JSON.stringify(wf));
-        } catch (e) { /* storage full */ }
+        } catch (e) {}
     }
 
     function saveWorkflow(name) {
         if (!name.trim()) {
-            showToast('\u26A0\uFE0F Please enter a workflow name.');
+            showToast('Please enter a workflow name.');
             return;
         }
         var workflows = getWorkflows();
@@ -742,7 +776,7 @@
         setWorkflows(workflows);
         workflowNameInput.value = '';
         renderWorkflowList();
-        showToast('\u2705 Workflow "' + name.trim() + '" saved!');
+        showToast('Workflow "' + name.trim() + '" saved!');
     }
 
     function loadWorkflow(name) {
@@ -758,7 +792,6 @@
             return { id: taskIdCounter++, type: t.type || 'analyze', param: t.param || '', details: t.details || '' };
         });
 
-        // Apply to UI
         roleSelect.value = state.roleSelectValue;
         customRoleInput.value = state.customRole;
         chkAgentic.checked = state.agentic;
@@ -766,7 +799,7 @@
         updateRoleUI();
         renderTasks();
         closeSidebar();
-        showToast('\u2705 Workflow "' + name + '" loaded!');
+        showToast('Workflow "' + name + '" loaded!');
     }
 
     function deleteWorkflow(name) {
@@ -774,7 +807,7 @@
         delete workflows[name];
         setWorkflows(workflows);
         renderWorkflowList();
-        showToast('\uD83D\uDDD1\uFE0F Workflow "' + name + '" deleted.');
+        showToast('Workflow "' + name + '" deleted.');
     }
 
     function exportWorkflow(name) {
@@ -791,22 +824,22 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('\uD83D\uDCE4 Workflow "' + name + '" exported!');
+        showToast('Workflow "' + name + '" exported!');
     }
 
     function importWorkflow(file) {
         var reader = new FileReader();
-        reader.onload = function (e) {
+        reader.onload = function (evt) {
             try {
-                var data = JSON.parse(e.target.result);
+                var data = JSON.parse(evt.target.result);
                 if (!data.name || !data.workflow) throw new Error('Invalid format');
                 var workflows = getWorkflows();
                 workflows[data.name] = data.workflow;
                 setWorkflows(workflows);
                 renderWorkflowList();
-                showToast('\uD83D\uDCE5 Workflow "' + data.name + '" imported!');
+                showToast('Workflow "' + data.name + '" imported!');
             } catch (err) {
-                showToast('\u26A0\uFE0F Invalid workflow file.');
+                showToast('Invalid workflow file.');
             }
         };
         reader.readAsText(file);
@@ -819,30 +852,31 @@
             workflowListEl.innerHTML = '<p class="empty-msg">No saved workflows yet.</p>';
             return;
         }
-        // Sort by most recent
         names.sort(function (a, b) {
             return (workflows[b].savedAt || '').localeCompare(workflows[a].savedAt || '');
         });
-        workflowListEl.innerHTML = names.map(function (name) {
+        var html = '';
+        for (var i = 0; i < names.length; i++) {
+            var name = names[i];
             var wf = workflows[name];
             var dateStr = '';
             if (wf.savedAt) {
                 var d = new Date(wf.savedAt);
                 dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             }
-            return '<div class="workflow-item" data-wf-name="' + escapeHtml(name) + '">' +
+            html += '<div class="workflow-item" data-wf-name="' + escapeHtml(name) + '">' +
                 '<span class="wf-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>' +
                 '<span class="wf-date">' + dateStr + '</span>' +
                 '<div class="wf-actions">' +
                     '<button class="wf-btn" data-wf-action="load" title="Load">\u25B6</button>' +
-                    '<button class="wf-btn" data-wf-action="export" title="Export">\uD83D\uDCE4</button>' +
+                    '<button class="wf-btn" data-wf-action="export" title="Export">\u2191</button>' +
                     '<button class="wf-btn wf-btn-delete" data-wf-action="delete" title="Delete">\u2715</button>' +
                 '</div>' +
             '</div>';
-        }).join('');
+        }
+        workflowListEl.innerHTML = html;
     }
 
-    // Event delegation for workflow list
     workflowListEl.addEventListener('click', function (e) {
         var btn = e.target.closest('.wf-btn');
         if (!btn) return;
@@ -867,7 +901,6 @@
     });
 
     btnExportWorkflow.addEventListener('click', function () {
-        // Export current state as a workflow JSON
         var data = JSON.stringify({
             name: 'Current Workflow',
             workflow: {
@@ -891,7 +924,7 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('\uD83D\uDCE4 Current workflow exported!');
+        showToast('Current workflow exported!');
     });
 
     btnImportWorkflow.addEventListener('click', function () {
@@ -914,7 +947,7 @@
         var md = generateMarkdown();
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(md).then(function () {
-                showToast('\u2705 Copied to clipboard!');
+                showToast('Copied to clipboard!');
             }).catch(function () {
                 fallbackCopy(md);
             });
@@ -924,19 +957,19 @@
     });
 
     function fallbackCopy(text) {
-        var textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
         try {
             document.execCommand('copy');
-            showToast('\u2705 Copied to clipboard!');
+            showToast('Copied to clipboard!');
         } catch (e) {
-            showToast('\u26A0\uFE0F Could not copy. Please select text manually.');
+            showToast('Could not copy. Please select text manually.');
         }
-        document.body.removeChild(textarea);
+        document.body.removeChild(ta);
     }
 
     btnDownload.addEventListener('click', function () {
@@ -951,7 +984,7 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('\uD83D\uDCBE Downloaded as .md file!');
+        showToast('Downloaded as .md file!');
     });
 
     btnReset.addEventListener('click', function () {
@@ -970,7 +1003,7 @@
             chkSubagent.checked = false;
             updateRoleUI();
             renderTasks();
-            showToast('\uD83D\uDD04 Reset to defaults');
+            showToast('Reset to defaults');
         }
     });
 
@@ -983,13 +1016,10 @@
         clearTimeout(toastTimeout);
         toastEl.textContent = message;
         toastEl.classList.add('show');
-        if (message.indexOf('\u2705') !== -1 || message.indexOf('\uD83D\uDCBE') !== -1 || message.indexOf('\uD83D\uDCE4') !== -1 || message.indexOf('\uD83D\uDCE5') !== -1) {
-            toastEl.classList.add('success');
-        } else {
-            toastEl.classList.remove('success');
-        }
+        toastEl.classList.add('success');
         toastTimeout = setTimeout(function () {
             toastEl.classList.remove('show');
+            toastEl.classList.remove('success');
         }, 2200);
     }
 
@@ -999,7 +1029,7 @@
     document.addEventListener('keydown', function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
             var activeEl = document.activeElement;
-            if (!activeEl || !(activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
+            if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA' && activeEl.tagName !== 'SELECT')) {
                 e.preventDefault();
                 addTask();
             }
@@ -1008,7 +1038,6 @@
             e.preventDefault();
             btnCopy.click();
         }
-        // Escape to close sidebar
         if (e.key === 'Escape') {
             closeSidebar();
         }
@@ -1030,12 +1059,5 @@
 
     init();
 
-    console.log('\uD83D\uDE80 Prompt Generator ready!');
-    console.log('   Tips:');
-    console.log('   - Drag task cards by the \u22EE\u22EE handle only to reorder');
-    console.log('   - Use \u25B2\u25BC buttons on each card for fine-tuning order');
-    console.log('   - Press Ctrl+N (Cmd+N on Mac) to add a new task');
-    console.log('   - Press Ctrl+Shift+C to copy the prompt');
-    console.log('   - Click 💾 Workflows to save/load/export/import workflows');
-    console.log('   - All changes are auto-saved to localStorage');
+    console.log('Prompt Generator ready!');
 });
