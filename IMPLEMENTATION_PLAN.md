@@ -553,8 +553,8 @@ app shippable and dependencies come before dependents.
 
 * **Phase 5 — Finish rebuild (prereqs). ✅ DONE (see §16).** R1 depth-CSS, R2 `${var}` interpolation
   (ASK/SYNTHESIZE depend on it), R3 README, R4 break/continue validation. *Small, unblocks the rest.*
-* **Phase 6 — Clarity + keystone.** §12 Agent-Clarity Mandate (Compact/Explicit toggle) and
-  **PHASE/SECTION** (13.1). Highest structural payoff; everything else nests inside sections.
+* **Phase 6 — Clarity + keystone. ✅ DONE (see §18).** §12 Agent-Clarity Mandate (Compact/Explicit toggle) and
+  **PHASE/SECTION** (13.1), plus the **RESOURCES/attachments** capability (§17). Highest structural payoff; everything else nests inside sections.
 * **Phase 7 — Interaction barriers.** **GATE** (13.2) then **ASK** (13.3, with answer→variable).
   Unlocks Prompt 1's questionnaire + confirmation gates. User's #1 and #2 priorities.
 * **Phase 8 — Delivery & dev directives.** **PACKAGE/STRUCTURE** (13.6), **VALIDATE**, **LOG**,
@@ -610,3 +610,70 @@ passes with zero runtime errors.
 
 **Next up:** Phase 6 — Agent-Clarity Mandate (Compact/Explicit toggle) + the
 PHASE/SECTION container (§12, §13.1).
+
+---
+
+## 17. New capability — RESOURCES (attachable references)  [user request]
+
+The user needs to attach **external references** to a prompt and point at them from
+steps. Examples: a long block of text (console/error logs), uploaded files, uploaded
+images, a zip, a URL/link, or arbitrary named material. Steps must be able to say
+"review the uploaded images", "check the errors in `console.log`", or reference a file
+by name.
+
+### 17.1 Model
+- New top-level state array: `state.resources = [ { id, kind, name, value, note } ]`.
+  - `kind` ∈ `text` (long pasted text / logs), `file` (uploaded file — name + optional
+    inlined small content or just a referenced filename), `image` (uploaded image —
+    name/thumbnail), `zip` (archive name), `link` (URL), `other`.
+  - `name` is the **handle** used to refer to it (e.g. `console_errors`, `mockup.png`).
+  - `value` holds the URL / pasted text / filename; `note` is an optional description.
+- Resources are declared **once at the top of the prompt** and referenced by handle
+  with the existing variable syntax extended: `@name` (or reuse `${name}`) inside any
+  step field. (Use a distinct sigil `@` so resources and plain variables stay separable.)
+
+### 17.2 UI
+- A new **"Resources / Attachments"** card above Variables.
+- Per row: a `kind` selector, a `name` (handle) field, a value field whose control adapts
+  to kind:
+  - `text` → a textarea (paste logs here);
+  - `link` → URL input;
+  - `file`/`image`/`zip` → a real file input (`<input type=file>`). For images, show a
+    thumbnail; store as a data-URL only if small, otherwise store just the filename +
+    size and treat it as a by-name reference (the agent receives the *reference*, since
+    the actual bytes live in the agent's own upload channel).
+  - `other` → text input.
+- An **"insert reference"** affordance: clicking a resource chip inserts `@name` into the
+  focused step field.
+
+### 17.3 Output
+- **Top-of-prompt RESOURCES block**, emitted before STEPS:
+  - Pseudo-code / Explicit:
+    ```
+    RESOURCES (referenced below by @name):
+      @console_errors  [text]  — paste of runtime console errors (inlined below)
+      @mockup_png      [image] — uploaded image "mockup.png"
+      @repo_zip        [zip]   — uploaded archive "project.zip"
+      @docs_link       [link]  — https://example.com/spec
+    ```
+    For `text` resources, optionally inline the full text in a fenced `--- @name ---`
+    section after the list (since the user explicitly wants long text to appear at the
+    top of the prompt).
+  - Markdown: a `## Resources` section with a bullet per resource and fenced blocks for
+    inlined text.
+- **Reference expansion:** `@name` inside a step is left as a clear token in Compact mode
+  (`@console_errors`) and expanded in Explicit mode to
+  `the resource "console_errors" (uploaded text, see RESOURCES at top)`.
+- Unknown `@name` → `@name:UNDEFINED` (same safety pattern as variables, R2).
+
+### 17.4 Validation & persistence
+- A step referencing an undefined `@handle` is flagged (extends `collectIssues`).
+- Resources persist in `state` (schema bump). Large file bytes are **not** persisted to
+  localStorage (quota); only metadata + small inline text/data-URLs are. On reload,
+  by-reference files show their name with a "re-attach" hint.
+
+### 17.5 Priority
+Slot into **Phase 6** alongside the Agent-Clarity work, because (a) it is a top-level
+prompt-structure feature like sections, and (b) the "@reference" mechanism shares the
+interpolation/validation machinery just built in Phase 5. Implement RESOURCES first in
+Phase 6, then the Compact/Explicit toggle, then SECTION.

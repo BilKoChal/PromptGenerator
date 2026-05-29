@@ -61,7 +61,7 @@
         { value: 'repeat',   label: 'Repeat N times' },
     ];
 
-    const CONTAINER_TYPES = ['if', 'loop', 'subagent', 'parallel'];
+    const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel'];
     const isContainer = (n) => CONTAINER_TYPES.includes(n.type);
 
     // ──────────────────────────────────────
@@ -81,11 +81,13 @@
         return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file' };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
+    function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
     function makeLoop()     { return { id: uid('lp'), type: 'loop', loopType: 'for_each', source: '', itemVar: 'item', collapsed: false, body: [] }; }
     function makeAgent()    { return { id: uid('ag'), role: '', task: '', agentic: true, verbose: false, children: [] }; }
     function makeSubagent() { return { id: uid('sa'), type: 'subagent', execMode: 'parallel', collapsed: false, agents: [makeAgent()] }; }
     function makeParallel() { return { id: uid('pl'), type: 'parallel', collapsed: false, branches: [[], []] }; }
     function makeNode(kind) {
+        if (kind === 'section') return makeSection();
         if (kind === 'if') return makeIf();
         if (kind === 'loop') return makeLoop();
         if (kind === 'subagent') return makeSubagent();
@@ -97,6 +99,7 @@
     // Slots: container child-arrays, uniformly
     // ──────────────────────────────────────
     function slotsOf(node) {
+        if (node.type === 'section') return [{ key: 'children', label: 'STEPS', arr: node.children }];
         if (node.type === 'if') {
             const s = [{ key: 'then', label: 'THEN', arr: node.then }];
             (node.elseifs || []).forEach((e, i) => s.push({ key: 'elseif:' + i, label: 'ELSE IF', arr: e.children }));
@@ -110,6 +113,7 @@
     }
     function getSlotArr(node, slotKey) {
         if (!node) return null;
+        if (slotKey === 'children') return node.children;
         if (slotKey === 'then') return node.then;
         if (slotKey === 'else') return node.else;
         if (slotKey === 'body') return node.body;
@@ -176,6 +180,8 @@
             if (n.type === 'task' && n.action !== 'goto' && n.action !== 'break' && n.action !== 'continue') {
                 const verb = getVerb(n);
                 out.push({ id: n.id, label: 'Step ' + num + ' — ' + verb + (n.target ? ' ' + n.target.slice(0, 20) : '') });
+            } else if (n.type === 'section') {
+                out.push({ id: n.id, label: 'Phase ' + num + ' — ' + (n.title || 'untitled').slice(0, 24) });
             }
         });
         return out;
@@ -184,6 +190,14 @@
         let r = null;
         walk(state.nodes, (n, d, num) => { if (n.id === id) r = num; });
         return r;
+    }
+    function gotoTitle(id) {
+        const f = findNode(id);
+        if (!f) return '';
+        const n = f.node;
+        if (n.type === 'task') { const v = getVerb(n); return (v + (n.target ? ' ' + n.target : '')).slice(0, 40); }
+        if (n.type === 'section') return n.title || 'section';
+        return n.type;
     }
     function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
     function reId(node) {
@@ -199,7 +213,7 @@
     const STORAGE_KEY = 'prompt_generator_state_v5';
     const WORKFLOWS_KEY = 'prompt_generator_workflows';
     const THEME_KEY = 'prompt_generator_theme';
-    const SCHEMA = 2;
+    const SCHEMA = 3;
 
     function defaultState() {
         return {
@@ -209,7 +223,9 @@
             agentic: false, subagent: false, verbose: false, strict: false,
             contextProject: '', contextTech: '', contextConstraints: '', contextOutput: '',
             variables: [],
+            resources: [],
             outputMode: 'pseudocode',
+            verbosity: 'explicit',
             nodes: [ makeTask('clone'), makeTask('analyze') ],
         };
     }
@@ -241,8 +257,11 @@
             const raw = localStorage.getItem(STORAGE_KEY);
             if (!raw) return;
             const saved = JSON.parse(raw);
-            if (saved.schema === SCHEMA && Array.isArray(saved.nodes)) {
+            // Any tree-model save (schema 2 or 3) loads by merging onto current defaults,
+            // which fills in newly-added fields (resources, verbosity, …).
+            if (saved.schema >= 2 && Array.isArray(saved.nodes)) {
                 state = Object.assign(defaultState(), saved);
+                state.schema = SCHEMA;
                 migrateOldActions(state.nodes);  // one-time patch for old file/folder action types
             } else {
                 const legacy = localStorage.getItem('prompt_generator_state_v4') || localStorage.getItem('prompt_generator_state_v3');
@@ -334,15 +353,47 @@
         (state.variables || []).forEach(v => { if (v.name && v.name.trim()) m[v.name.trim()] = v.value || ''; });
         return m;
     }
-    function interp(str, map) {
+    function resourceSet() {
+        const s = {};
+        (state.resources || []).forEach(r => { if (r.name && r.name.trim()) s[r.name.trim()] = r; });
+        return s;
+    }
+    function isExplicit() { return state.verbosity !== 'compact'; }
+    function interp(str, map, res) {
         if (str == null) return str;
         map = map || varMap();
-        return String(str).replace(/\$\{\s*([A-Za-z0-9_]+)\s*\}/g, (full, name) => {
+        res = res || resourceSet();
+        // ${var} → value
+        let out = String(str).replace(/\$\{\s*([A-Za-z0-9_]+)\s*\}/g, (full, name) => {
             if (Object.prototype.hasOwnProperty.call(map, name)) {
                 return map[name] !== '' ? map[name] : '${' + name + '}';
             }
             return '${' + name + ':UNDEFINED}';
         });
+        // @resource → reference (kept as a clear token; Explicit mode expands it)
+        out = out.replace(/@([A-Za-z0-9_]+)/g, (full, name) => {
+            if (Object.prototype.hasOwnProperty.call(res, name)) {
+                if (isExplicit()) {
+                    const r = res[name];
+                    return 'the resource "' + name + '" (' + RES_LABEL(r.kind) + ', see RESOURCES at top)';
+                }
+                return '@' + name;
+            }
+            return '@' + name + ':UNDEFINED';
+        });
+        return out;
+    }
+    const RES_KINDS = [
+        { value: 'text',  label: 'Text / logs' },
+        { value: 'file',  label: 'File' },
+        { value: 'image', label: 'Image' },
+        { value: 'zip',   label: 'Zip archive' },
+        { value: 'link',  label: 'Link / URL' },
+        { value: 'other', label: 'Other' },
+    ];
+    function RES_LABEL(kind) {
+        const k = (RES_KINDS.find(x => x.value === kind) || {}).label || kind;
+        return k.toLowerCase();
     }
 
     // ──────────────────────────────────────
@@ -374,10 +425,26 @@
         let out = 'ROLE: ' + h.role + (h.caps.length ? '  [' + h.caps.join(', ') + ']' : '') + '\n';
         if (h.vars.length) out += 'VARS: ' + h.vars.map(v => v.name + '=' + (v.value || '?')).join('; ') + '\n';
         if (h.ctx.length) out += 'CONTEXT: ' + h.ctx.join('; ') + '\n';
+        out += resourcesPseudo();
         out += '\nSTEPS\n';
         if (!state.nodes.length) out += '  (no steps)\n';
         else state.nodes.forEach((n, i) => { out += pseudoNode(n, 0, String(i + 1)); });
         return out.replace(/\n+$/, '') + '\n';
+    }
+    function resourcesPseudo() {
+        const rs = (state.resources || []).filter(r => r.name && r.name.trim());
+        if (!rs.length) return '';
+        let out = '\nRESOURCES (referenced below by @name):\n';
+        rs.forEach(r => {
+            const v = r.kind === 'text' ? '(text inlined below)' : (r.value || '<empty>');
+            out += '  @' + r.name.trim() + '  [' + r.kind + ']' + (r.note ? ' — ' + r.note : (r.value && r.kind !== 'text' ? ' — ' + r.value : '')) + '\n';
+        });
+        // inline full text resources at the top, as the user requested
+        const texts = rs.filter(r => r.kind === 'text' && (r.value || '').trim());
+        texts.forEach(r => {
+            out += '\n--- @' + r.name.trim() + ' ---\n' + r.value.replace(/\n+$/, '') + '\n--- end @' + r.name.trim() + ' ---\n';
+        });
+        return out;
     }
     function pad(d) { return '  '.repeat(d); }
     function pseudoNode(n, depth, num) {
@@ -385,10 +452,21 @@
         if (n.type === 'task') {
             const t = TASK_TYPE_MAP[n.action] || { verb: n.action };
             if (n.action === 'goto') {
-                const ref = n.gotoRef ? ('Step ' + (stepNumberOf(n.gotoRef) || '?')) : '<step?>';
-                return ind + num + '. GOTO ' + ref + '\n';
+                if (!n.gotoRef) return ind + num + '. GOTO <step?>\n';
+                const refNum = stepNumberOf(n.gotoRef) || '?';
+                const refTitle = gotoTitle(n.gotoRef);
+                if (isExplicit()) {
+                    return ind + num + '. GO BACK TO and re-execute Step ' + refNum +
+                        (refTitle ? ' ("' + refTitle + '")' : '') + '. This is a loop-back, not a one-time jump.\n';
+                }
+                return ind + num + '. GOTO Step ' + refNum + '\n';
             }
-            if (n.action === 'break' || n.action === 'continue') return ind + num + '. ' + t.verb + '\n';
+            if (n.action === 'break') {
+                return ind + num + (isExplicit() ? '. BREAK — exit the current loop entirely.' : '. BREAK') + '\n';
+            }
+            if (n.action === 'continue') {
+                return ind + num + (isExplicit() ? '. CONTINUE — skip the rest of this iteration and start the next one.' : '. CONTINUE') + '\n';
+            }
             const verb = getVerb(n);
             let line = ind + num + '. ' + verb + (n.target ? ' ' + interp(n.target) : ' <target?>');
             if (n.details && n.details.trim()) line += '  // ' + interp(n.details).trim().replace(/\n+/g, '; ');
@@ -412,7 +490,15 @@
             return ind + num + '. ' + head + ':\n' + slotPseudo(n.body, depth + 1, num);
         }
         if (n.type === 'subagent') {
-            let s = ind + num + '. SPAWN sub-agents [' + (n.execMode || 'parallel').toUpperCase() + ']:\n';
+            const mode = (n.execMode || 'parallel');
+            let s;
+            if (isExplicit()) {
+                s = ind + num + (mode === 'parallel'
+                    ? '. SPAWN the following sub-agents AT THE SAME TIME (in parallel). Each works independently and returns its own report:\n'
+                    : '. RUN the following sub-agents ONE AT A TIME, in order; each finishes before the next starts:\n');
+            } else {
+                s = ind + num + '. SPAWN sub-agents [' + mode.toUpperCase() + ']:\n';
+            }
             (n.agents || []).forEach((a, ai) => {
                 s += ind + '   - agent "' + (a.role ? interp(a.role) : 'unnamed') + '"' +
                      (a.task ? ' → ' + interp(a.task) : '') +
@@ -427,6 +513,18 @@
                 s += ind + '   ── branch ' + (bi + 1) + ':\n';
                 s += slotPseudo(b, depth + 2, num + '.' + (bi + 1));
             });
+            return s;
+        }
+        if (n.type === 'section') {
+            const title = n.title ? interp(n.title) : 'Untitled phase';
+            let s = ind + '=== PHASE ' + num + ': ' + title + ' ===\n';
+            if (n.goalNote && n.goalNote.trim()) s += ind + '   Goal: ' + interp(n.goalNote).trim() + '\n';
+            s += slotPseudo(n.children, depth + 1, num);
+            if (n.exitCriteria && n.exitCriteria.trim()) {
+                s += ind + (isExplicit()
+                    ? '   Do not leave this phase until: ' + interp(n.exitCriteria).trim() + '\n'
+                    : '   Exit when: ' + interp(n.exitCriteria).trim() + '\n');
+            }
             return s;
         }
         return '';
@@ -448,10 +546,25 @@
         if (state.strict)   md += '- **strict** — follow instructions exactly.\n';
         if (h.vars.length) { md += '\n## Variables\n'; h.vars.forEach(v => md += '- `' + v.name + '` = ' + (v.value || '_(unset)_') + '\n'); }
         if (h.ctx.length)  { md += '\n## Context & Constraints\n'; h.ctx.forEach(c => md += '- ' + c.replace('=', ': ') + '\n'); }
+        md += resourcesMd();
         md += '\n## Tasks\nPerform the following in order:\n\n';
         if (!state.nodes.length) md += '_(no tasks defined)_\n';
         else state.nodes.forEach((n, i) => { md += mdNode(n, 0, String(i + 1)); });
         md += '\n---\n_Generated with Prompt Generator_\n';
+        return md;
+    }
+    function resourcesMd() {
+        const rs = (state.resources || []).filter(r => r.name && r.name.trim());
+        if (!rs.length) return '';
+        let md = '\n## Resources\nReference these below with `@name`.\n';
+        rs.forEach(r => {
+            md += '- `@' + r.name.trim() + '` (' + r.kind + ')' +
+                  (r.kind !== 'text' && r.value ? ' — ' + r.value : '') +
+                  (r.note ? ' — ' + r.note : '') + '\n';
+        });
+        rs.filter(r => r.kind === 'text' && (r.value || '').trim()).forEach(r => {
+            md += '\n**@' + r.name.trim() + ':**\n```\n' + r.value.replace(/\n+$/, '') + '\n```\n';
+        });
         return md;
     }
     function mdNode(n, depth, num) {
@@ -463,6 +576,14 @@
             const verb = getVerb(n);
             let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
             if (n.details && n.details.trim()) interp(n.details).split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
+            return s;
+        }
+        if (n.type === 'section') {
+            const hashes = '#'.repeat(Math.min(6, depth + 2));
+            let s = '\n' + hashes + ' Phase ' + num + ': ' + (n.title ? interp(n.title) : 'Untitled') + '\n';
+            if (n.goalNote && n.goalNote.trim()) s += '_Goal: ' + interp(n.goalNote).trim() + '_\n\n';
+            s += slotMd(n.children, depth + 1, num);
+            if (n.exitCriteria && n.exitCriteria.trim()) s += ind + '> **Exit when:** ' + interp(n.exitCriteria).trim() + '\n';
             return s;
         }
         if (n.type === 'if') {
@@ -565,6 +686,7 @@
             .replace(/`([^`]+?)`/g, '<span class="md-code">`$1`</span>')
             .replace(/(\/\/[^\n]*)$/gm, '<span class="md-comment">$1</span>')
             .replace(/\$\{[A-Za-z0-9_]+(?::UNDEFINED)?\}/g, '<span class="md-var">$&</span>')
+            .replace(/(^|[^A-Za-z0-9_@])@([A-Za-z0-9_]+(?::UNDEFINED)?)/g, '$1<span class="md-resource">@$2</span>')
             .replace(/&lt;([a-zA-Z?: ]+?)&gt;/g, '<span class="md-missing">&lt;$1&gt;</span>')
             .replace(/\b(IF|ELSE IF|ELSE|THEN|FOR EACH|IN|WHILE|REPEAT|TIMES|SPAWN|PARALLEL|GOTO|BREAK|CONTINUE|DO|CLONE|ANALYZE|RESEARCH|IMPLEMENT|REFACTOR|TEST|DOCUMENT|REVIEW|DEPLOY|DEBUG|OPTIMIZE|MIGRATE|CONFIGURE|MONITOR|CREATE|UPDATE|DELETE|RENAME|FILE|FOLDER)\b/g, '<span class="md-keyword">$1</span>');
     }
@@ -594,7 +716,8 @@
         const card = document.createElement('div');
         card.dataset.nodeId = node.id;
         card.className = 'task-card depth-' + Math.min(depth, 6) +
-            (node.type === 'if' ? ' card-if' : node.type === 'loop' ? ' card-loop' :
+            (node.type === 'section' ? ' card-section' :
+             node.type === 'if' ? ' card-if' : node.type === 'loop' ? ' card-loop' :
              node.type === 'subagent' ? ' card-subagent' : node.type === 'parallel' ? ' card-parallel' : '');
 
         card.innerHTML =
@@ -619,11 +742,19 @@
 
     function cardBody(node) {
         if (node.type === 'task')     return taskFields(node);
+        if (node.type === 'section')  return sectionHead(node);
         if (node.type === 'if')       return ifHead(node);
         if (node.type === 'loop')     return loopHead(node);
         if (node.type === 'subagent') return subagentHead(node);
         if (node.type === 'parallel') return '<div class="block-label label-parallel">⇉ Parallel block (branches run concurrently)</div>';
         return '';
+    }
+
+    function sectionHead(node) {
+        return '<div class="block-label label-section">▣ Phase / Section</div>' +
+            '<input type="text" class="section-title" data-field="title" value="' + attr(node.title) + '" placeholder="Phase title, e.g. Phase 0 — Rapid Prototype">' +
+            '<input type="text" class="section-goal" data-field="goalNote" value="' + attr(node.goalNote) + '" placeholder="Goal of this phase (optional)">' +
+            '<input type="text" class="section-exit" data-field="exitCriteria" value="' + attr(node.exitCriteria) + '" placeholder="Exit / done-when criteria (optional)">';
     }
 
     function taskFields(node) {
@@ -691,7 +822,10 @@
         const wrap = document.createElement('div');
         wrap.className = 'slots-wrap';
 
-        if (node.type === 'if') {
+        if (node.type === 'section') {
+            wrap.appendChild(slotBlock('STEPS IN THIS PHASE', 'children', node.children, node, depth, 'branch-section'));
+        }
+        else if (node.type === 'if') {
             wrap.appendChild(slotBlock('THEN', 'then', node.then, node, depth, 'branch-then'));
             (node.elseifs || []).forEach((e, i) => {
                 const block = document.createElement('div');
@@ -779,6 +913,7 @@
         bar.dataset.slot = slotKey;
         bar.innerHTML =
             '<button data-add="task">+ Task</button>' +
+            '<button data-add="section">+ Phase</button>' +
             '<button data-add="if">+ If</button>' +
             '<button data-add="loop">+ Loop</button>' +
             '<button data-add="subagent">+ Sub-Agent</button>' +
@@ -980,6 +1115,9 @@
     const contextOutput = document.getElementById('contextOutput');
     const varList = document.getElementById('varList');
     const btnAddVar = document.getElementById('btnAddVar');
+    const resList = document.getElementById('resList');
+    const btnAddRes = document.getElementById('btnAddRes');
+    const verbosityToggle = document.getElementById('verbosityToggle');
     const btnCopy = document.getElementById('btnCopy');
     const btnDownload = document.getElementById('btnDownload');
     const btnReset = document.getElementById('btnReset');
@@ -990,6 +1128,7 @@
 
     // add-block buttons (root level)
     document.getElementById('btnAddTask').addEventListener('click', () => addNodeTo(null, null, 'task'));
+    document.getElementById('btnAddSection').addEventListener('click', () => addNodeTo(null, null, 'section'));
     document.getElementById('btnAddIf').addEventListener('click', () => addNodeTo(null, null, 'if'));
     document.getElementById('btnAddLoop').addEventListener('click', () => addNodeTo(null, null, 'loop'));
     document.getElementById('btnAddSub').addEventListener('click', () => addNodeTo(null, null, 'subagent'));
@@ -1020,6 +1159,82 @@
     varList.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-vremove]'); if (!btn) return;
         state.variables.splice(+btn.dataset.i, 1); renderVariables(); pushHistory(); updatePreview();
+    });
+
+    // ──────────────────────────────────────
+    // Resources / attachments  [§17]
+    // ──────────────────────────────────────
+    function renderResources() {
+        if (!resList) return;
+        resList.innerHTML = '';
+        (state.resources || []).forEach((r, i) => {
+            const row = document.createElement('div');
+            row.className = 'res-row';
+            const kindSel = '<select class="res-kind" data-i="' + i + '" aria-label="Resource kind">' +
+                RES_KINDS.map(k => '<option value="' + k.value + '"' + (r.kind === k.value ? ' selected' : '') + '>' + k.label + '</option>').join('') + '</select>';
+            const nameInp = '<input type="text" class="res-name" data-i="' + i + '" value="' + attr(r.name) + '" placeholder="@handle">';
+            let valueCtl;
+            if (r.kind === 'text') {
+                valueCtl = '<textarea class="res-value res-text" data-i="' + i + '" rows="2" placeholder="Paste long text / console errors here…">' + escapeHtml(r.value) + '</textarea>';
+            } else if (r.kind === 'link') {
+                valueCtl = '<input type="text" class="res-value" data-i="' + i + '" value="' + attr(r.value) + '" placeholder="https://…">';
+            } else if (r.kind === 'file' || r.kind === 'image' || r.kind === 'zip') {
+                valueCtl = '<div class="res-file-wrap">' +
+                    '<input type="file" class="res-file" data-i="' + i + '"' + (r.kind === 'image' ? ' accept="image/*"' : r.kind === 'zip' ? ' accept=".zip"' : '') + '>' +
+                    '<input type="text" class="res-value" data-i="' + i + '" value="' + attr(r.value) + '" placeholder="or type a filename to reference">' +
+                    (r.thumb ? '<img class="res-thumb" src="' + attr(r.thumb) + '" alt="thumbnail">' : '') +
+                    '</div>';
+            } else {
+                valueCtl = '<input type="text" class="res-value" data-i="' + i + '" value="' + attr(r.value) + '" placeholder="reference / description">';
+            }
+            row.innerHTML = '<div class="res-top">' + kindSel + nameInp +
+                '<button class="btn-icon btn-remove" data-i="' + i + '" data-rremove title="Remove resource" aria-label="Remove resource">✕</button></div>' +
+                valueCtl +
+                '<input type="text" class="res-note" data-i="' + i + '" value="' + attr(r.note || '') + '" placeholder="short note (optional)">';
+            resList.appendChild(row);
+        });
+    }
+    btnAddRes && btnAddRes.addEventListener('click', () => {
+        state.resources.push({ id: uid('r'), kind: 'text', name: '', value: '', note: '' });
+        renderResources(); pushHistory(); updatePreview();
+    });
+    resList && resList.addEventListener('input', (e) => {
+        const i = e.target.dataset.i; if (i === undefined) return;
+        const r = state.resources[i]; if (!r) return;
+        if (e.target.classList.contains('res-name')) r.name = e.target.value;
+        else if (e.target.classList.contains('res-value')) r.value = e.target.value;
+        else if (e.target.classList.contains('res-note')) r.note = e.target.value;
+        updatePreview();
+    });
+    resList && resList.addEventListener('change', (e) => {
+        const i = e.target.dataset.i; if (i === undefined) return;
+        const r = state.resources[i]; if (!r) return;
+        if (e.target.classList.contains('res-kind')) { r.kind = e.target.value; renderResources(); pushHistory(); updatePreview(); return; }
+        if (e.target.classList.contains('res-file')) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            if (!r.name) r.name = file.name.replace(/[^A-Za-z0-9_]/g, '_');
+            r.value = file.name;
+            // small images → inline thumbnail; otherwise reference by name only (quota-safe)
+            if (r.kind === 'image' && file.size < 200 * 1024) {
+                const reader = new FileReader();
+                reader.onload = ev => { r.thumb = ev.target.result; renderResources(); updatePreview(); saveState(); };
+                reader.readAsDataURL(file);
+            }
+            renderResources(); pushHistory(); updatePreview();
+        }
+    });
+    resList && resList.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-rremove]'); if (!btn) return;
+        state.resources.splice(+btn.dataset.i, 1); renderResources(); pushHistory(); updatePreview();
+    });
+
+    // verbosity toggle (Compact / Explicit)  [§12]
+    verbosityToggle && verbosityToggle.addEventListener('click', (e) => {
+        const opt = e.target.closest('[data-verb]'); if (!opt) return;
+        state.verbosity = opt.dataset.verb;
+        verbosityToggle.querySelectorAll('[data-verb]').forEach(b => b.classList.toggle('active', b.dataset.verb === state.verbosity));
+        renderPreviewNow(); saveState();
     });
 
     // ──────────────────────────────────────
@@ -1061,7 +1276,9 @@
         contextConstraints.value = state.contextConstraints || '';
         contextOutput.value = state.contextOutput || '';
         modeToggle.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.outputMode));
+        if (verbosityToggle) verbosityToggle.querySelectorAll('[data-verb]').forEach(b => b.classList.toggle('active', b.dataset.verb === (state.verbosity || 'explicit')));
         renderVariables();
+        renderResources();
         renderTasks();
     }
 

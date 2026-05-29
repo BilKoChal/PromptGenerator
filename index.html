@@ -111,6 +111,14 @@
                 <button class="btn btn-add-var" id="btnAddVar"><span class="plus-icon">+</span> Add Variable</button>
             </div>
 
+            <!-- Resources / Attachments -->
+            <div class="card" id="resCard">
+                <div class="card-header"><span class="section-icon icon-res">📎</span> Resources &amp; Attachments
+                    <span class="card-hint">Reference with <code>@name</code> in any field</span></div>
+                <div class="res-list" id="resList"></div>
+                <button class="btn btn-add-res" id="btnAddRes"><span class="plus-icon">+</span> Add Resource</button>
+            </div>
+
             <!-- Tasks -->
             <div class="card" id="tasksCard">
                 <div class="card-header"><span class="section-icon icon-tasks">📋</span> Steps
@@ -118,6 +126,7 @@
                 <div class="task-list" id="taskList"></div>
                 <div class="add-buttons">
                     <button class="btn btn-add" id="btnAddTask"><span class="plus-icon">+</span> Task</button>
+                    <button class="btn btn-add-section" id="btnAddSection"><span class="plus-icon">▣</span> Phase</button>
                     <button class="btn btn-add-if" id="btnAddIf"><span class="plus-icon">⑂</span> If/Else</button>
                     <button class="btn btn-add-loop" id="btnAddLoop"><span class="plus-icon">↻</span> Loop</button>
                     <button class="btn btn-add-sub" id="btnAddSub"><span class="plus-icon">🤖</span> Sub-Agent</button>
@@ -139,6 +148,10 @@
                 <div class="preview-meta">
                     <span class="valid-badge is-ok" id="validBadge">✓ complete</span>
                     <span class="token-badge" id="tokenBadge">~0 tok</span>
+                    <div class="verbosity-toggle" id="verbosityToggle" role="group" aria-label="Verbosity">
+                        <button data-verb="explicit" class="active" title="Unambiguous, agent-friendly (default)">Explicit</button>
+                        <button data-verb="compact" title="Token-lean">Compact</button>
+                    </div>
                 </div>
                 <div class="preview-block" id="previewBlock" aria-live="polite"></div>
                 <div class="btn-group">
