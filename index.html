@@ -57,6 +57,7 @@
                 <h1><span class="icon">⚡</span>Prompt Generator</h1>
                 <p class="subtitle">Visually compose pseudo-code prompts for AI agents</p>
                 <button id="themeToggle" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+                <button id="settingsToggle" class="theme-toggle settings-toggle" title="Output text settings" aria-label="Open settings">⚙️</button>
             </div>
 
             <!-- Role -->
@@ -202,6 +203,26 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Settings Modal [S2] -->
+    <div id="settingsOverlay" class="settings-overlay"></div>
+    <div id="settingsModal" class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
+        <div class="settings-head">
+            <h2 id="settingsTitle">⚙️ Output Text Settings</h2>
+            <button id="settingsClose" class="settings-close" title="Close" aria-label="Close settings">✕</button>
+        </div>
+        <div class="settings-subhead">
+            <p class="settings-hint">Customize the default wording the generator emits for every component. Overrides are saved locally and apply to both Pseudo-code and Markdown output.</p>
+            <input type="text" id="settingsSearch" class="settings-search" placeholder="🔍 Filter settings…" aria-label="Filter settings">
+            <div class="settings-actions">
+                <button id="btnSettingsExport" class="btn btn-outline-small">📤 Export</button>
+                <button id="btnSettingsImport" class="btn btn-outline-small">📥 Import</button>
+                <button id="btnSettingsReset" class="btn btn-outline-small">🔄 Reset all</button>
+                <input type="file" id="settingsImportInput" accept=".json" hidden>
+            </div>
+        </div>
+        <div id="settingsBody" class="settings-body"></div>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

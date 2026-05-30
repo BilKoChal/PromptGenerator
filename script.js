@@ -3017,6 +3017,134 @@
     // ──────────────────────────────────────
     // Init
     // ──────────────────────────────────────
+    // ══════════════════════════════════════
+    // [S2] Settings modal — dynamically built from DEFAULT_SETTINGS
+    // ══════════════════════════════════════
+    const SETTINGS_GROUP_META = {
+        role: { icon: '🎭', title: 'Role' }, context: { icon: '🧭', title: 'Context' },
+        vars: { icon: '🔣', title: 'Variables' }, resources: { icon: '📎', title: 'Resources' },
+        memory: { icon: '🧠', title: 'Memory' }, mode: { icon: '🚦', title: 'Mode / Steps' },
+        verbs: { icon: '🔤', title: 'Task verbs' }, gate: { icon: '🛑', title: 'Gate' },
+        loop: { icon: '🔁', title: 'Loop' }, cond: { icon: '🔀', title: 'If / Condition' },
+        subagent: { icon: '🤖', title: 'Sub-agents' }, parallel: { icon: '⚡', title: 'Parallel' },
+        route: { icon: '🧭', title: 'Route' }, section: { icon: '📑', title: 'Section / Phase' },
+        ask: { icon: '❓', title: 'Ask user' }, table: { icon: '🔢', title: 'Table' },
+        package: { icon: '📦', title: 'Package' },
+    };
+    function walkSettings(obj, prefix, out) {
+        for (const k in obj) {
+            const v = obj[k];
+            const p = prefix ? prefix + '.' + k : k;
+            if (v && typeof v === 'object' && !Array.isArray(v)) walkSettings(v, p, out);
+            else out.push(p);
+        }
+    }
+    function getDefaultSetting(path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), DEFAULT_SETTINGS); }
+    function hasOverride(path) { const v = path.split('.').reduce((o, k) => (o == null ? o : o[k]), state.settings); return v !== undefined && v !== null; }
+    function setNested(obj, path, val) { const ks = path.split('.'); let o = obj; for (let i = 0; i < ks.length - 1; i++) { if (typeof o[ks[i]] !== 'object' || o[ks[i]] == null) o[ks[i]] = {}; o = o[ks[i]]; } o[ks[ks.length - 1]] = val; }
+    function deleteNested(obj, path) {
+        const ks = path.split('.'); let o = obj; const stack = [];
+        for (let i = 0; i < ks.length - 1; i++) { if (o[ks[i]] == null) return; stack.push([o, ks[i]]); o = o[ks[i]]; }
+        delete o[ks[ks.length - 1]];
+        for (let i = stack.length - 1; i >= 0; i--) { const po = stack[i][0], pk = stack[i][1]; if (po[pk] && Object.keys(po[pk]).length === 0) delete po[pk]; else break; }
+    }
+    function humanizeLabel(path, group) {
+        return path.slice(group.length + 1).split('.').map(seg =>
+            seg.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase())
+        ).join(' › ');
+    }
+    function settingSearchText(path, group) { return (group + ' ' + humanizeLabel(path, group) + ' ' + getSetting(path)).toLowerCase(); }
+
+    function buildSettingRow(path, group) {
+        const def = String(getDefaultSetting(path));
+        const cur = String(getSetting(path));
+        const overridden = hasOverride(path);
+        const row = document.createElement('div');
+        row.className = 'set-row' + (overridden ? ' overridden' : '');
+        row.dataset.path = path;
+        const labelEl = document.createElement('label');
+        labelEl.textContent = humanizeLabel(path, group);
+        const useTextarea = def.length > 46 || cur.length > 46;
+        const inp = document.createElement(useTextarea ? 'textarea' : 'input');
+        if (useTextarea) inp.rows = 2; else inp.type = 'text';
+        inp.value = cur;
+        const reset = document.createElement('button');
+        reset.className = 'set-reset'; reset.title = 'Reset to default'; reset.textContent = '↺';
+        reset.disabled = !overridden;
+        inp.addEventListener('input', () => setSettingValue(path, inp.value, row, reset));
+        reset.addEventListener('click', () => {
+            deleteNested(state.settings, path); saveSettings(); updatePreview();
+            inp.value = String(getDefaultSetting(path)); row.classList.remove('overridden'); reset.disabled = true;
+        });
+        row.appendChild(labelEl); row.appendChild(inp); row.appendChild(reset);
+        return row;
+    }
+    function setSettingValue(path, val, row, resetBtn) {
+        if (val === String(getDefaultSetting(path))) deleteNested(state.settings, path);
+        else setNested(state.settings, path, val);
+        const over = hasOverride(path);
+        if (row) row.classList.toggle('overridden', over);
+        if (resetBtn) resetBtn.disabled = !over;
+        saveSettings(); updatePreview();
+    }
+    function renderSettings() {
+        const body = document.getElementById('settingsBody');
+        if (!body) return;
+        const q = (document.getElementById('settingsSearch').value || '').trim().toLowerCase();
+        const paths = []; walkSettings(DEFAULT_SETTINGS, '', paths);
+        const groups = {};
+        paths.forEach(p => { const g = p.split('.')[0]; (groups[g] = groups[g] || []).push(p); });
+        body.innerHTML = '';
+        Object.keys(DEFAULT_SETTINGS).forEach(g => {
+            const meta = SETTINGS_GROUP_META[g] || { icon: '•', title: cap1(g) };
+            const rows = (groups[g] || []).filter(p => !q || settingSearchText(p, g).includes(q));
+            if (!rows.length) return;
+            const det = document.createElement('details');
+            det.className = 'settings-group';
+            det.open = !!q;
+            const sum = document.createElement('summary');
+            sum.innerHTML = escapeHtml(meta.icon + ' ' + meta.title) + '<span class="settings-count">' + rows.length + '</span>';
+            det.appendChild(sum);
+            const inner = document.createElement('div'); inner.className = 'settings-group-inner';
+            rows.forEach(p => inner.appendChild(buildSettingRow(p, g)));
+            det.appendChild(inner);
+            body.appendChild(det);
+        });
+        if (!body.children.length) body.innerHTML = '<p class="settings-hint" style="margin-top:16px;">No settings match your filter.</p>';
+    }
+    (function wireSettingsModal() {
+        const toggle = document.getElementById('settingsToggle');
+        const overlay = document.getElementById('settingsOverlay');
+        const modal = document.getElementById('settingsModal');
+        if (!toggle || !modal) return;
+        function open() { renderSettings(); document.body.classList.add('settings-open'); modal.setAttribute('aria-hidden', 'false'); setTimeout(() => { const s = document.getElementById('settingsSearch'); if (s) s.focus(); }, 60); }
+        function close() { document.body.classList.remove('settings-open'); modal.setAttribute('aria-hidden', 'true'); }
+        toggle.addEventListener('click', open);
+        overlay.addEventListener('click', close);
+        document.getElementById('settingsClose').addEventListener('click', close);
+        document.getElementById('settingsSearch').addEventListener('input', renderSettings);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('settings-open')) close(); });
+        document.getElementById('btnSettingsExport').addEventListener('click', () => {
+            download(JSON.stringify(state.settings || {}, null, 2), 'prompt-settings.json', 'application/json'); showToast('Exported settings');
+        });
+        const importInput = document.getElementById('settingsImportInput');
+        document.getElementById('btnSettingsImport').addEventListener('click', () => importInput.click());
+        importInput.addEventListener('change', (e) => {
+            const f = e.target.files[0]; if (!f) return;
+            const r = new FileReader();
+            r.onload = () => {
+                try { const obj = JSON.parse(r.result); if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw 0; state.settings = obj; saveSettings(); renderSettings(); updatePreview(); showToast('Imported settings'); }
+                catch (x) { showToast('⚠️ Invalid settings file'); }
+                importInput.value = '';
+            };
+            r.readAsText(f);
+        });
+        document.getElementById('btnSettingsReset').addEventListener('click', () => {
+            if (!confirm('Reset ALL output-text settings to their defaults?')) return;
+            state.settings = {}; saveSettings(); renderSettings(); updatePreview(); showToast('Settings reset to defaults');
+        });
+    })();
+
     applyTheme((function () { try { return localStorage.getItem(THEME_KEY) || 'light'; } catch (e) { return 'light'; } })());
     loadState();
     loadSettings();   // [S6] load output-text overrides (after loadState so the dedicated key is authoritative)

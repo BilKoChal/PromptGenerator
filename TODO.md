@@ -73,11 +73,17 @@ structural nodes (only the leaf sub-type tasks vary) — the ⬜ is correct.
 - **BUG-F1 / F2 / F3:** ✅ fixed — sub-agent `agentic` now in Markdown; sub-agent `verbose` now
   emitted in both generators (output side; UI checkbox still TODO under F2); ASK `suggestDefault`
   now in Markdown and pseudo-compact.
-- **Still open:** S2 (settings modal UI), S5 (import/export), F2 UI checkbox, and BUG-F5/F6
-  (IF-branch numbering, loop `${itemVar}` UNDEFINED).
+- **S2 — Settings modal UI:** ✅ done. ⚙️ button opens a modal built dynamically from
+  `DEFAULT_SETTINGS`: fields grouped by component (Role, Gate, Loop, …), live-edit updates the
+  preview, per-field ↺ reset, a search filter, and an ● marker on overridden fields.
+- **S5 — Import / Export / Reset-all:** ✅ done, inside the modal. Export/Import the overrides
+  as JSON (separate `prompt_generator_settings` key); "Reset all" clears every override.
+- **Still open:** F2 UI checkbox (sub-agent `verbose` is wired in output + settings, just no
+  editor checkbox in the agent card yet), and BUG-F5/F6 (IF-branch numbering, loop `${itemVar}`
+  UNDEFINED).
 
-**Next:** S2 — the settings modal UI (gear button → editable fields grouped by component),
-then S5 (import/export/reset), then BUG-F5/F6 + the F2 UI checkbox.
+**Next:** add the sub-agent `verbose` checkbox (finish F2), then fix BUG-F5 (IF/ELSE-IF/ELSE
+step-number collision) and BUG-F6 (`${itemVar}` UNDEFINED inside loop body).
 
 ---
 
@@ -1119,7 +1125,7 @@ then S5 (import/export/reset), then BUG-F5/F6 + the F2 UI checkbox.
   - **Priority:** HIGH — explicitly requested by user
   - **Files:** `script.js`
 
-- [🔶] **S6 — Settings persistence and migration**
+- [✅] **S6 — Settings persistence and migration**
   - **What:** Settings should persist in localStorage alongside the main state. When the app loads, custom settings are merged with defaults.
   - **Storage key:** `prompt_generator_settings` (separate from main state for easier import/export)
   - **Migration:** If new settings keys are added in future versions, they automatically get default values from `DEFAULT_SETTINGS` without breaking old saves.
@@ -1141,7 +1147,7 @@ then S5 (import/export/reset), then BUG-F5/F6 + the F2 UI checkbox.
 | 🟠 P1 | BUG-F5 — IF/ELSE-IF/ELSE step-number collision (NEW) | 9.3 | Small | ❌ |
 | 🟠 P1 | BUG-F6 — Loop itemVar shows UNDEFINED in body (NEW) | 9.3 | Small | ❌ |
 | 🟠 P1 | S1 — Settings data model | 9.5 | Medium | ✅ |
-| 🟠 P1 | S2 — Settings modal UI | 9.5 | Large | ⬜ |
+| 🟠 P1 | S2 — Settings modal UI | 9.5 | Large | ✅ |
 | 🟠 P1 | S3 — Connect settings to generators | 9.5 | Large | ✅ |
 | 🟡 P2 | V1 — Compact/Explicit for Role | 9.4 | Small | ⬜ |
 | 🟡 P2 | V2 — Compact/Explicit for Context | 9.4 | Small | ⬜ |
@@ -1151,4 +1157,4 @@ then S5 (import/export/reset), then BUG-F5/F6 + the F2 UI checkbox.
 | 🟢 P3 | V3 — Compact/Explicit for Variables | 9.4 | Small | ⬜ |
 | 🟢 P3 | V4 — Compact/Explicit for Resources | 9.4 | Small | ⬜ |
 | 🟢 P3 | V5 — Compact/Explicit for Mode headers | 9.4 | Small | ⬜ |
-| 🟢 P3 | S6 — Settings persistence and migration | 9.5 | Small | ⬜ |
+| 🟢 P3 | S6 — Settings persistence and migration | 9.5 | Small | ✅ |
