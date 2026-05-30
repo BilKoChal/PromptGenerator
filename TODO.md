@@ -768,7 +768,7 @@ step-number collision) and BUG-F6 (`${itemVar}` UNDEFINED inside loop body).
 
 ### P10-4 — Allow nesting children inside any task (and other leaf nodes)
 
-- [⬜] **NEST-1 — Let leaf nodes (task, gate, package, table) contain sub-nodes**
+- [✅] **NEST-1 — Let tasks contain sub-nodes** — DONE 2026-05-30 (task `children` slot, N.x numbering in both generators, recursive find/walk/clone/validate via `hasChildren`, back-compat; gate/package/table left as leaves for now)
   - **VERIFIED:** `slotsOf()` returns child slots only for containers
     (`section/if/loop/subagent/parallel/ask/route`); `task` and the other leaves return `[]`, so the card
     shows no drop-zone / "+ Task" bar. `LEAF_TYPES = ['task','gate','package','table']`.
@@ -819,7 +819,7 @@ step-number collision) and BUG-F6 (`${itemVar}` UNDEFINED inside loop body).
 | 🟡 P2 | TASK-3 — Plan task "plan & execute" mode | 10.3 | Small-Med | ✅ |
 | 🟡 P2 | TASK-1 — `none` target-type option | 10.2 | Small | ✅ |
 | 🟡 P2 | TASK-2 — Per-type task fields audit | 10.2 | Med-Large | ✅ |
-| 🟡 P2 | NEST-1 — Nest sub-nodes inside tasks | 10.4 | Medium | ⬜ |
+| 🟡 P2 | NEST-1 — Nest sub-nodes inside tasks | 10.4 | Medium | ✅ |
 | 🟢 P3 | ARCH-1 — Split script.js into modules | 10.5 | Large | ⬜ |
 
 ---

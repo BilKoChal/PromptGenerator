@@ -694,3 +694,6 @@ body.settings-open .settings-modal {
     padding: 6px 8px; font-size: 0.82rem; font-family: var(--font-sans);
     background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text);
 }
+
+/* [NEST-1] Task sub-step slot */
+.slot-head.branch-task { color: var(--text-secondary); }

@@ -116,6 +116,9 @@
 
     const CONTAINER_TYPES = ['section', 'if', 'loop', 'subagent', 'parallel', 'ask', 'route'];
     const isContainer = (n) => CONTAINER_TYPES.includes(n.type);
+    // [NEST-1] A task can also hold child sub-nodes. hasChildren() is used for recursive
+    // tree traversal (find/walk/remove/clone/migrate/validate) so it covers tasks too.
+    const hasChildren = (n) => isContainer(n) || (n.type === 'task' && Array.isArray(n.children));
     // Leaf-only types (for reference, validation, etc.)
     const LEAF_TYPES = ['task', 'gate', 'package', 'table'];
 
@@ -133,7 +136,7 @@
     // Node factories
     // ──────────────────────────────────────
     function makeTask(action) {
-        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '', planMode: 'file', fields: {} };
+        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '', planMode: 'file', fields: {}, children: [], collapsed: false };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
@@ -201,6 +204,7 @@
     // ──────────────────────────────────────
     function slotsOf(node) {
         if (node.type === 'section') return [{ key: 'children', label: 'STEPS', arr: node.children }];
+        if (node.type === 'task') return [{ key: 'children', label: 'SUB-STEPS', arr: (node.children || (node.children = [])) }];  // [NEST-1]
         if (node.type === 'if') {
             const s = [{ key: 'then', label: 'THEN', arr: node.then }];
             (node.elseifs || []).forEach((e, i) => s.push({ key: 'elseif:' + i, label: 'ELSE IF', arr: e.children }));
@@ -246,7 +250,7 @@
         for (let i = 0; i < arr.length; i++) {
             const n = arr[i];
             if (n.id === id) return { node: n, parentArr: arr, index: i };
-            if (isContainer(n)) {
+            if (hasChildren(n)) {
                 for (const slot of slotsOf(n)) {
                     const found = findNode(id, slot.arr);
                     if (found) return found;
@@ -259,7 +263,7 @@
         let out = [];
         slotsOf(node).forEach(s => {
             out.push(s.arr);
-            s.arr.forEach(c => { if (isContainer(c)) out = out.concat(collectAllArrays(c)); });
+            s.arr.forEach(c => { if (hasChildren(c)) out = out.concat(collectAllArrays(c)); });
         });
         return out;
     }
@@ -271,7 +275,7 @@
     function moveNode(id, targetArr, idx) {
         const f = findNode(id);
         if (!f) return;
-        if (isContainer(f.node) && collectAllArrays(f.node).indexOf(targetArr) !== -1) return; // cycle guard
+        if (hasChildren(f.node) && collectAllArrays(f.node).indexOf(targetArr) !== -1) return; // cycle guard
         const sameArr = (f.parentArr === targetArr);
         const node = removeNode(id);
         if (!node) return;
@@ -286,7 +290,7 @@
         arr.forEach((n, i) => {
             const num = prefix ? prefix + '.' + (i + 1) : String(i + 1);
             fn(n, depth, num, arr, i);
-            if (isContainer(n)) slotsOf(n).forEach(s => walk(s.arr, fn, depth + 1, num));
+            if (hasChildren(n)) slotsOf(n).forEach(s => walk(s.arr, fn, depth + 1, num));
         });
     }
     function collectReferencableSteps() {
@@ -538,7 +542,7 @@
                 n.action = n.action.replace(/_file|_folder/, '');
                 changed = true;
             }
-            if (isContainer(n)) slotsOf(n).forEach(s => migrateOldActions(s.arr));
+            if (hasChildren(n)) slotsOf(n).forEach(s => migrateOldActions(s.arr));
         });
         if (changed) saveState();
     }
@@ -558,7 +562,7 @@
                     if (!('isPrimary' in a)) a.isPrimary = false;
                 });
             }
-            if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema4(s.arr));
+            if (hasChildren(n)) slotsOf(n).forEach(s => migrateSchema4(s.arr));
         });
     }
 
@@ -567,7 +571,7 @@
         if (!nodes) return;
         nodes.forEach(n => {
             if (n.type === 'task' && !('contentOutline' in n)) { n.contentOutline = ''; }
-            if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema5(s.arr));
+            if (hasChildren(n)) slotsOf(n).forEach(s => migrateSchema5(s.arr));
         });
     }
 
@@ -608,7 +612,7 @@
                     if (!c.children) c.children = [];
                 });
             }
-            if (isContainer(n)) slotsOf(n).forEach(s => migrateSchema6Nodes(s.arr));
+            if (hasChildren(n)) slotsOf(n).forEach(s => migrateSchema6Nodes(s.arr));
         });
     }
 
@@ -841,7 +845,15 @@
         return out;
     }
     function pad(d) { return '  '.repeat(d); }
+    // [NEST-1] wrapper: render the node, then append any task sub-steps as N.x children
     function pseudoNode(n, depth, num) {
+        let out = pseudoNodeRaw(n, depth, num);
+        if (n.type === 'task' && n.children && n.children.length) {
+            out += slotPseudo(n.children, depth + 1, num);
+        }
+        return out;
+    }
+    function pseudoNodeRaw(n, depth, num) {
         const ind = pad(depth);
         if (n.type === 'task') {
             const t = TASK_TYPE_MAP[n.action] || { verb: n.action };
@@ -1197,7 +1209,15 @@
         });
         return md;
     }
+    // [NEST-1] wrapper: render the node, then append any task sub-steps as N.x children
     function mdNode(n, depth, num) {
+        let out = mdNodeRaw(n, depth, num);
+        if (n.type === 'task' && n.children && n.children.length) {
+            out += slotMd(n.children, depth + 1, num);
+        }
+        return out;
+    }
+    function mdNodeRaw(n, depth, num) {
         const ind = '  '.repeat(depth);
         if (n.type === 'task') {
             const t = TASK_TYPE_MAP[n.action] || { verb: n.action };
@@ -1440,7 +1460,7 @@
                     if (!(n.cases || []).length) { missing++; badIds[n.id] = 1; }
                     else if ((n.cases || []).some(c => !(c.label || '').trim())) { missing++; badIds[n.id] = 1; }
                 }
-                if (isContainer(n)) {
+                if (hasChildren(n)) {
                     const childInLoop = inLoop || n.type === 'loop';
                     slotsOf(n).forEach(s => rec(s.arr, childInLoop));
                 }
@@ -1543,7 +1563,7 @@
             '<div class="drag-handle" tabindex="0" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</div>' +
             '<div class="task-content">' + cardBody(node) + '</div>' +
             '<div class="task-actions">' +
-                (isContainer(node) ? '<button class="btn-icon btn-collapse" data-action="collapse" title="Collapse" aria-label="Collapse">' + (node.collapsed ? '▸' : '▾') + '</button>' : '') +
+                (hasChildren(node) ? '<button class="btn-icon btn-collapse" data-action="collapse" title="Collapse" aria-label="Collapse">' + (node.collapsed ? '▸' : '▾') + '</button>' : '') +
                 '<button class="btn-icon btn-move" data-action="moveUp" title="Move up" aria-label="Move up">▲</button>' +
                 '<button class="btn-icon btn-move" data-action="moveDown" title="Move down" aria-label="Move down">▼</button>' +
                 '<button class="btn-icon" data-action="duplicate" title="Duplicate" aria-label="Duplicate">⧉</button>' +
@@ -1551,7 +1571,7 @@
             '</div>';
 
         // nested slots
-        if (isContainer(node) && !node.collapsed) {
+        if (hasChildren(node) && !node.collapsed) {
             const slotsWrap = card.querySelector('.task-content');
             buildSlots(node, slotsWrap, depth);
         }
@@ -1801,6 +1821,9 @@
 
         if (node.type === 'section') {
             wrap.appendChild(slotBlock('STEPS IN THIS PHASE', 'children', node.children, node, depth, 'branch-section'));
+        }
+        else if (node.type === 'task') {  // [NEST-1]
+            wrap.appendChild(slotBlock('SUB-STEPS', 'children', (node.children || (node.children = [])), node, depth, 'branch-task'));
         }
         else if (node.type === 'if') {
             wrap.appendChild(slotBlock('THEN', 'then', node.then, node, depth, 'branch-then'));
