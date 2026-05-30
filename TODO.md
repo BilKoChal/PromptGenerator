@@ -701,6 +701,129 @@ step-number collision) and BUG-F6 (`${itemVar}` UNDEFINED inside loop body).
 
 ---
 
+## Phase 10 — UX & Architecture (found 2026-05-30, user review)
+
+> All five items below were verified against the current `script.js` before planning.
+> Recommended order: **P10-1 (quick bug) → P10-3 → P10-2 → P10-4 → P10-5 (big refactor, last)**.
+> Do the architecture split (P10-5) LAST so the feature work doesn't have to be re-merged.
+
+### P10-1 — Disabling multi-mode doesn't collapse the panel when the active mode isn't `/default`
+
+- [✅] **BUG-MM — "Disable multi-mode" leaves the panel expanded** — FIXED 2026-05-30
+  - **VERIFIED:** The output is correct (generators only check `state.multiModeEnabled`), but the
+    *panel* uses `isSingleDefaultMode()` (script.js ~L421) to decide whether to collapse to the
+    minimal UI, and that function requires `m.name === '/default'`:
+    ```js
+    function isSingleDefaultMode() {
+        if (!state.modes || state.modes.length !== 1) return false;
+        const m = state.modes[0];
+        return m.name === '/default' && !(m.flags && m.flags.length) && !state.multiModeEnabled;
+    }
+    ```
+    Repro: add a mode (e.g. `/plan`), make it active, click "↩ Disable multi-mode". `disableMultiMode()`
+    sets `state.modes = [active]` (named `/plan`) and `multiModeEnabled = false`, so the name check
+    fails → `renderModes()` keeps the expanded panel even though multi-mode is off.
+  - **Fix options (pick one):**
+    1. Decouple the panel from the name: `isSingleDefaultMode()` should return `!state.multiModeEnabled`
+       (when multi-mode is off, always show the collapsed UI regardless of the single mode's name). This
+       is the cleanest — the name is irrelevant once multi-mode is off.
+    2. In `disableMultiMode()`, rename the surviving mode back to `/default` (loses the user's name; worse).
+  - **Recommendation:** Option 1. Also re-check `renderModes()` early-return so the collapsed branch
+    fires purely on `!state.multiModeEnabled`.
+  - **Priority:** HIGH (small) · **Files:** `script.js` (`isSingleDefaultMode`, maybe `renderModes`)
+
+### P10-2 — Task types are near-identical; add per-type fields + a `none` target option
+
+- [⬜] **TASK-1 — Add a `none` option to the File/Folder target-type toggle**
+  - **VERIFIED:** `HAS_TARGET_TYPE = { create, update, delete, rename }` and the card renders only two
+    buttons (📄 File / 📁 Folder, script.js ~L1538). `getVerb()` always appends ` FILE`/` FOLDER`.
+  - **What:** Add a third option **🚫 None** so e.g. `create` emits just `CREATE <target>` with no
+    FILE/FOLDER suffix. Store `targetType: 'none'`; `getVerb()` skips the suffix when `'none'`.
+  - **Files:** `script.js` (`makeTask` default, target-type button group, `getVerb`, `TARGET_TYPE_PH`).
+- [⬜] **TASK-2 — Audit & differentiate task types (per-type fields)**
+  - **VERIFIED:** All ~30 entries in `TASK_TYPES` share one shape (`target` + `details`); only the
+    directive sub-types (plan/log/split/validate/synthesize/commit/produce_file/rules/goto) special-case
+    their output. Many tasks would benefit from type-specific fields/placeholders.
+  - **What:** Define an optional per-type field schema (e.g. `clone` → branch/depth; `test` →
+    framework/scope; `deploy` → target env; `commit` → type+scope+subject; `review` → checklist).
+    Drive the card body and the generator from this schema instead of one generic `target/details` pair.
+  - **Approach:** Add a `fields:[…]` descriptor to each `TASK_TYPES` entry (default = the current
+    target+details), render dynamically in the task card, read in the generators. Keep back-compat by
+    treating missing `fields` as the current behaviour.
+  - **Priority:** MEDIUM (medium–large) · **Files:** `script.js` (TASK_TYPES, task card render, generators).
+
+### P10-3 — `plan` task should support "plan then execute", not only "create a plan file"
+
+- [✅] **TASK-3 — Plan task: add a "plan & execute" mode** — DONE 2026-05-30 (file / plan_then_do / inline; settings-overridable; verified)
+  - **VERIFIED:** `plan` explicit output is hard-coded to *create a plan document* only
+    (script.js: `CREATE a plan document "…" with the next sequential Task-ID…`). There's no option to
+    say "produce a plan and then carry it out."
+  - **What:** Add a per-node choice on the `plan` task — e.g. `planMode: 'file' | 'plan_then_do' | 'inline'`:
+    - `file` (current): write the plan to the target file.
+    - `plan_then_do`: "First lay out a step-by-step plan, then execute it in order, updating the plan as you go."
+    - `inline`: present the plan to the user and wait (no file).
+  - Wire the three variants into both pseudo + Markdown explicit/compact, and make the wording overridable
+    via `DEFAULT_SETTINGS` (`verbs`/a new `plan` settings group) so it fits the Phase-9 settings system.
+  - **Priority:** MEDIUM (small–medium) · **Files:** `script.js` (makeTask, plan card UI, generators, settings).
+
+### P10-4 — Allow nesting children inside any task (and other leaf nodes)
+
+- [⬜] **NEST-1 — Let leaf nodes (task, gate, package, table) contain sub-nodes**
+  - **VERIFIED:** `slotsOf()` returns child slots only for containers
+    (`section/if/loop/subagent/parallel/ask/route`); `task` and the other leaves return `[]`, so the card
+    shows no drop-zone / "+ Task" bar. `LEAF_TYPES = ['task','gate','package','table']`.
+  - **What:** Give `task` (priority) an optional `children: []` slot so a user can, e.g., create a
+    "CREATE FILE" task and nest sub-tasks under it. Render the drop-zone + inline-add bar on the task card,
+    and have the generators recurse into `node.children` (indented sub-steps with `N.x` numbering, like
+    sections do).
+  - **Design decisions to settle first:**
+    - Output semantics: are nested children "sub-steps of this task" (numbered `N.1, N.2…`) — recommended —
+      or a separate concept? Pick numbered sub-steps for consistency with `section`.
+    - Migration: add `children: []` in `makeTask`; treat missing as empty (back-compat).
+    - Scope: start with `task`; optionally extend to `gate`/`package`/`table` afterwards.
+  - **Touch points:** `slotsOf` (add `{key:'children', …}` for task), `makeTask`, task-card render
+    (drop-zone), `pseudoNode`/`mdNode` task branch (recurse + number), validation, drag-drop, `reId`/clone.
+  - **Priority:** MEDIUM (medium) · **Files:** `script.js`.
+
+### P10-5 — Split the single `script.js` into smaller modules (~3–4 files)
+
+- [⬜] **ARCH-1 — Modularize `script.js` (currently one ~3,150-line IIFE)**
+  - **VERIFIED:** Everything lives in one IIFE in `script.js`. It loads via a single
+    `<script src="script.js">` (no bundler, no `type="module"` today).
+  - **Proposed split (ES modules — simplest given no build step):**
+    1. `js/data.js` — static data + config: `TASK_TYPES`, `HAS_TARGET_TYPE`, `TARGET_TYPE_PH`,
+       `LOOP_TYPES`, `CONTAINER_TYPES`, `LEAF_TYPES`, `DEFAULT_SETTINGS`, storage-key constants.
+    2. `js/state.js` — state model + persistence: `defaultState`, `loadState`/`saveState`,
+       `loadSettings`/`saveSettings`, `getSetting`/`fill`, migrations, history (undo/redo), node factories
+       (`makeTask`…), tree helpers (`findNode`, `slotsOf`, `reId`, `deepClone`).
+    3. `js/generate.js` — pure generators: `generatePseudo`, `generateMarkdown`, `pseudoNode`, `mdNode`,
+       `headerLines`, `getVerb`, `interp`, token estimate, validation (`collectIssues`).
+    4. `js/ui.js` — DOM rendering + event wiring: task cards, modes panel, settings modal, sidebar,
+       toolbar, drag-drop, keyboard shortcuts, boot sequence.
+    - Then `index.html`: `<script type="module" src="js/main.js">` where `main.js` imports the others.
+  - **Constraints / risks:**
+    - The generators are the most testable seam — moving them to `js/generate.js` as pure functions of
+      `(state, settings)` makes the jsdom harness simpler. Watch the closure access to `state`/`getSetting`
+      (pass them in or keep a small shared module).
+    - ES modules need to be served over http (the repo already deploys via GitHub Pages — fine; `file://`
+      won't load modules, so note it for local dev / the jsdom harness).
+    - No behaviour change — this is a pure refactor; lock current output with snapshot tests BEFORE moving
+      code, then assert byte-identical output after.
+  - **Priority:** MEDIUM (large) · **Do LAST.** · **Files:** new `js/*.js`, `index.html`, `script.js` (removed).
+
+### Phase 10 Summary
+
+| Priority | Item | # | Effort | Status |
+|----------|------|---|--------|--------|
+| 🟠 P1 | BUG-MM — Disable multi-mode doesn't collapse panel | 10.1 | Small | ✅ |
+| 🟡 P2 | TASK-3 — Plan task "plan & execute" mode | 10.3 | Small-Med | ✅ |
+| 🟡 P2 | TASK-1 — `none` target-type option | 10.2 | Small | ⬜ |
+| 🟡 P2 | TASK-2 — Per-type task fields audit | 10.2 | Med-Large | ⬜ |
+| 🟡 P2 | NEST-1 — Nest sub-nodes inside tasks | 10.4 | Medium | ⬜ |
+| 🟢 P3 | ARCH-1 — Split script.js into modules | 10.5 | Large | ⬜ |
+
+---
+
 ## Completed Items (for reference)
 
 | Item | Phase | Status |

@@ -88,7 +88,7 @@
     // Node factories
     // ──────────────────────────────────────
     function makeTask(action) {
-        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '' };
+        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '', planMode: 'file' };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
@@ -366,6 +366,14 @@
         vars: { compactLabel: 'VARS', explicitHeading: 'VARIABLES (use ${name} to reference in steps)', mdHeading: 'Variables' },
         resources: { compactLabel: 'RESOURCES (referenced below by @name):', explicitLeadIn: 'The following resources are available; reference them with @name.', mdHeading: 'Resources' },
         memory: { label: 'MEMORY', instruction: 'Save this entire prompt as "{file}" and re-read it at the start of every new request. Never discard or summarize it.', compactInstruction: 'save as "{file}", re-read it before every request' },
+        plan: {
+            fileExplicit: 'CREATE a plan document "{target}" with the next sequential Task-ID (continue from the highest existing).',
+            fileCompact: 'PLAN {target}',
+            executeExplicit: 'First lay out a clear, step-by-step plan for "{target}", THEN execute it in order, updating the plan as you go. Do not skip the planning step.',
+            executeCompact: 'PLAN then EXECUTE {target}',
+            inlineExplicit: 'Lay out a step-by-step plan for "{target}" and PRESENT it to the user. WAIT for their approval before doing any of the work.',
+            inlineCompact: 'PLAN (await approval) {target}',
+        },
         mode: { compactLabel: 'MODE', flagLabel: 'Flag', stepsLabel: 'STEPS', emptyStepsLabel: '(no steps)', mdTasksLead: 'Perform the following in order:', mdEmptyLabel: '(no tasks defined)' },
         // Verbs derived from TASK_TYPES so they never desync; still overridable individually.
         verbs: Object.fromEntries(TASK_TYPES.map(t => [t.value, t.verb])),
@@ -419,9 +427,10 @@
         return mode ? mode.nodes : state.nodes;
     }
     function isSingleDefaultMode() {
-        if (!state.modes || state.modes.length !== 1) return false;
-        const m = state.modes[0];
-        return m.name === '/default' && !(m.flags && m.flags.length) && !state.multiModeEnabled;
+        // [BUG-MM] When multi-mode is off, the panel must show its collapsed/minimal UI
+        // regardless of the surviving mode's name (it may have been renamed, e.g. "/plan",
+        // before multi-mode was disabled). The mode name is irrelevant once multi-mode is off.
+        return !state.multiModeEnabled;
     }
 
     // Undo / redo  [5.4]
@@ -831,10 +840,10 @@
             }
             if (n.action === 'plan') {
                 const target = n.target ? interp(n.target) : '<target?>';
-                if (isExplicit()) {
-                    return ind + num + '. CREATE a plan document "' + target + '" with the next sequential Task-ID (continue from the highest existing).\n';
-                }
-                return ind + num + '. PLAN ' + target + '\n';
+                const pm = n.planMode || 'file';
+                const key = pm === 'plan_then_do' ? 'execute' : pm === 'inline' ? 'inline' : 'file';
+                const tpl = getSetting('plan.' + key + (isExplicit() ? 'Explicit' : 'Compact'));
+                return ind + num + '. ' + fill(tpl, { target: target }) + '\n';
             }
             if (n.action === 'log') {
                 const target = n.target ? interp(n.target) : '<target?>';
@@ -1163,8 +1172,11 @@
                 return s;
             }
             if (n.action === 'plan') {
-                let s = ind + '- **' + num + '. PLAN:** `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
-                if (isExplicit()) s += ind + '  - Create a plan document with the next sequential Task-ID\n';
+                const target = n.target ? interp(n.target) : '(not specified)';
+                const pm = n.planMode || 'file';
+                const key = pm === 'plan_then_do' ? 'execute' : pm === 'inline' ? 'inline' : 'file';
+                let s = ind + '- **' + num + '. PLAN:** `' + target + '`\n';
+                if (isExplicit()) s += ind + '  - ' + fill(getSetting('plan.' + key + 'Explicit'), { target: target }) + '\n';
                 return s;
             }
             if (n.action === 'log') {
@@ -1559,6 +1571,19 @@
             }
         }
         html += '</div>';
+        // [TASK-3] Plan task: choose how the plan is used
+        if (node.action === 'plan') {
+            const pm = node.planMode || 'file';
+            const PLAN_MODES = [
+                { value: 'file', label: '📄 Write plan to file' },
+                { value: 'plan_then_do', label: '▶ Plan, then execute' },
+                { value: 'inline', label: '✋ Plan & await approval' },
+            ];
+            html += '<div class="plan-mode-row"><label class="plan-mode-label">Plan mode</label>' +
+                '<select class="plan-mode-select" data-field="planMode" aria-label="Plan mode">' +
+                PLAN_MODES.map(o => '<option value="' + o.value + '"' + (pm === o.value ? ' selected' : '') + '>' + o.label + '</option>').join('') +
+                '</select></div>';
+        }
         // Rules textarea
         if (node.action === 'rules') {
             html += '<textarea class="task-details-input rules-textarea" data-field="rulesList" placeholder="Rules (one per line), e.g.:&#10;Use camelCase for variables&#10;All commits must follow Conventional Commits&#10;No any types in TypeScript" rows="4">' + escapeHtml(node.rulesList || '') + '</textarea>';
@@ -2042,6 +2067,7 @@
         // type/loopType/goto changes require re-render (fields differ)  [#5]
         if (field === 'action' || field === 'loopType') setField(id, field, e.target.value, true);
         else if (field === 'gotoRef') setField(id, field, e.target.value, false);
+        else if (field === 'planMode') setField(id, field, e.target.value, false);  // [TASK-3]
     });
 
     taskList.addEventListener('click', (e) => {
