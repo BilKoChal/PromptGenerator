@@ -63,6 +63,51 @@
         rename:  { file: 'src/old-name.ts → src/new-name.ts',           folder: 'src/old-dir → src/new-dir' },
     };
 
+    // [TASK-2] Optional per-type extra fields. Types NOT listed here behave exactly as before
+    // (plain target + details). Values are stored in node.fields[key]. Each field:
+    //   { key, label, ph, type? ('text'|'select'), options? (for select) }
+    // In output, non-empty fields are appended as concise qualifiers (see taskQualifiers()).
+    const TASK_FIELD_SCHEMA = {
+        clone: [
+            { key: 'branch', label: 'Branch', ph: 'main / develop' },
+            { key: 'depth', label: 'Clone depth', ph: 'e.g. shallow (--depth 1)' },
+        ],
+        test: [
+            { key: 'framework', label: 'Framework', ph: 'Jest / Vitest / pytest' },
+            { key: 'scope', label: 'Scope', type: 'select', options: ['', 'unit', 'integration', 'e2e', 'all'] },
+        ],
+        deploy: [
+            { key: 'environment', label: 'Environment', type: 'select', options: ['', 'dev', 'staging', 'production'] },
+            { key: 'strategy', label: 'Strategy', ph: 'rolling / blue-green / canary' },
+        ],
+        review: [
+            { key: 'focus', label: 'Focus', ph: 'security, performance, readability…' },
+        ],
+        commit: [
+            { key: 'commitType', label: 'Type', type: 'select', options: ['', 'feat', 'fix', 'docs', 'refactor', 'test', 'chore'] },
+            { key: 'scope', label: 'Scope', ph: 'auth, api, ui…' },
+        ],
+        research: [
+            { key: 'sources', label: 'Preferred sources', ph: 'official docs, RFCs…' },
+        ],
+        migrate: [
+            { key: 'from', label: 'From', ph: 'REST' },
+            { key: 'to', label: 'To', ph: 'GraphQL' },
+        ],
+    };
+    function fieldsFor(action) { return TASK_FIELD_SCHEMA[action] || null; }
+    // Build the concise "(label: value; …)" qualifier string from a node's extra fields.
+    function taskQualifiers(node) {
+        const schema = fieldsFor(node.action);
+        if (!schema || !node.fields) return '';
+        const parts = [];
+        schema.forEach(fld => {
+            const v = (node.fields[fld.key] || '').trim ? (node.fields[fld.key] || '').trim() : node.fields[fld.key];
+            if (v) parts.push(fld.label.toLowerCase() + ': ' + interp(String(v)));
+        });
+        return parts.length ? ' (' + parts.join('; ') + ')' : '';
+    }
+
     const LOOP_TYPES = [
         { value: 'for_each', label: 'For Each (iterate items)' },
         { value: 'while',    label: 'While (condition holds)' },
@@ -88,7 +133,7 @@
     // Node factories
     // ──────────────────────────────────────
     function makeTask(action) {
-        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '', planMode: 'file' };
+        return { id: uid('t'), type: 'task', action: action || 'analyze', target: '', details: '', gotoRef: '', targetType: 'file', rulesList: '', contentOutline: '', planMode: 'file', fields: {} };
     }
     function makeIf()       { return { id: uid('if'), type: 'if', condition: '', collapsed: false, then: [], elseifs: [], else: [] }; }
     function makeSection()  { return { id: uid('sec'), type: 'section', title: '', goalNote: '', exitCriteria: '', collapsed: false, children: [] }; }
@@ -633,7 +678,9 @@
         const t = TASK_TYPE_MAP[node.action];
         const verb = getSetting('verbs.' + node.action) || (t ? t.verb : node.action);
         if (HAS_TARGET_TYPE[node.action]) {
-            return verb + ' ' + (node.targetType || 'file').toUpperCase();
+            const tt = node.targetType || 'file';
+            if (tt === 'none') return verb;                 // [TASK-1] no FILE/FOLDER suffix
+            return verb + ' ' + tt.toUpperCase();
         }
         return verb;
     }
@@ -881,7 +928,7 @@
                 return ind + num + '. COMMIT ' + target + '\n';
             }
             const verb = getVerb(n);
-            let line = ind + num + '. ' + verb + (n.target ? ' ' + interp(n.target) : ' <target?>');
+            let line = ind + num + '. ' + verb + (n.target ? ' ' + interp(n.target) : ' <target?>') + taskQualifiers(n);
             if (n.details && n.details.trim()) line += '  // ' + interp(n.details).trim().replace(/\n+/g, '; ');
             return line + '\n';
         }
@@ -1206,7 +1253,7 @@
             }
             if (NO_TARGET[n.action]) return ind + '- **' + num + '. ' + t.verb + '**\n';
             const verb = getVerb(n);
-            let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target ? interp(n.target) : '(not specified)') + '`\n';
+            let s = ind + '- **' + num + '. ' + verb + '**: `' + (n.target ? interp(n.target) : '(not specified)') + '`' + taskQualifiers(n) + '\n';
             if (n.details && n.details.trim()) interp(n.details).split('\n').filter(l => l.trim()).forEach(l => s += ind + '  - ' + l.trim() + '\n');
             return s;
         }
@@ -1551,6 +1598,7 @@
             html += '<div class="target-type-toggle" role="group" aria-label="Target type">' +
                 '<button class="target-type-opt' + (tt === 'file' ? ' active' : '') + '" data-action="targetType" data-type="file">📄 File</button>' +
                 '<button class="target-type-opt' + (tt === 'folder' ? ' active' : '') + '" data-action="targetType" data-type="folder">📁 Folder</button>' +
+                '<button class="target-type-opt' + (tt === 'none' ? ' active' : '') + '" data-action="targetType" data-type="none">🚫 None</button>' +
             '</div>';
         }
         if (node.action === 'goto') {
@@ -1583,6 +1631,26 @@
                 '<select class="plan-mode-select" data-field="planMode" aria-label="Plan mode">' +
                 PLAN_MODES.map(o => '<option value="' + o.value + '"' + (pm === o.value ? ' selected' : '') + '>' + o.label + '</option>').join('') +
                 '</select></div>';
+        }
+        // [TASK-2] Per-type extra fields (only for types with a schema)
+        const schema = fieldsFor(node.action);
+        if (schema) {
+            const fv = node.fields || {};
+            let fhtml = '<div class="task-extra-fields">';
+            schema.forEach(fld => {
+                const val = fv[fld.key] || '';
+                if (fld.type === 'select') {
+                    fhtml += '<div class="task-extra-field"><label>' + escapeHtml(fld.label) + '</label>' +
+                        '<select class="task-extra-select" data-field="taskfield" data-fkey="' + fld.key + '" aria-label="' + attr(fld.label) + '">' +
+                        (fld.options || []).map(o => '<option value="' + attr(o) + '"' + (val === o ? ' selected' : '') + '>' + (o === '' ? '— ' + fld.label.toLowerCase() + ' —' : escapeHtml(o)) + '</option>').join('') +
+                        '</select></div>';
+                } else {
+                    fhtml += '<div class="task-extra-field"><label>' + escapeHtml(fld.label) + '</label>' +
+                        '<input type="text" class="task-extra-input" data-field="taskfield" data-fkey="' + fld.key + '" value="' + attr(val) + '" placeholder="' + attr(fld.ph || '') + '"></div>';
+                }
+            });
+            fhtml += '</div>';
+            html += fhtml;
         }
         // Rules textarea
         if (node.action === 'rules') {
@@ -2039,6 +2107,13 @@
             }
             return;
         }
+        // [TASK-2] per-type extra fields
+        if (field === 'taskfield') {
+            const f = findNode(id);
+            const fkey = e.target.dataset.fkey;
+            if (f && fkey) { if (!f.node.fields) f.node.fields = {}; f.node.fields[fkey] = e.target.value; updatePreview(); saveState(); }
+            return;
+        }
         if (field) setField(id, field, e.target.value, false);
     });
 
@@ -2068,6 +2143,10 @@
         if (field === 'action' || field === 'loopType') setField(id, field, e.target.value, true);
         else if (field === 'gotoRef') setField(id, field, e.target.value, false);
         else if (field === 'planMode') setField(id, field, e.target.value, false);  // [TASK-3]
+        else if (field === 'taskfield') {  // [TASK-2] select extra-field
+            const f = findNode(id); const fkey = e.target.dataset.fkey;
+            if (f && fkey) { if (!f.node.fields) f.node.fields = {}; f.node.fields[fkey] = e.target.value; updatePreview(); saveState(); }
+        }
     });
 
     taskList.addEventListener('click', (e) => {

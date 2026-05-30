@@ -734,13 +734,13 @@ step-number collision) and BUG-F6 (`${itemVar}` UNDEFINED inside loop body).
 
 ### P10-2 — Task types are near-identical; add per-type fields + a `none` target option
 
-- [⬜] **TASK-1 — Add a `none` option to the File/Folder target-type toggle**
+- [✅] **TASK-1 — Add a `none` option to the File/Folder target-type toggle** — DONE 2026-05-30 (🚫 None; getVerb skips suffix; verified)
   - **VERIFIED:** `HAS_TARGET_TYPE = { create, update, delete, rename }` and the card renders only two
     buttons (📄 File / 📁 Folder, script.js ~L1538). `getVerb()` always appends ` FILE`/` FOLDER`.
   - **What:** Add a third option **🚫 None** so e.g. `create` emits just `CREATE <target>` with no
     FILE/FOLDER suffix. Store `targetType: 'none'`; `getVerb()` skips the suffix when `'none'`.
   - **Files:** `script.js` (`makeTask` default, target-type button group, `getVerb`, `TARGET_TYPE_PH`).
-- [⬜] **TASK-2 — Audit & differentiate task types (per-type fields)**
+- [✅] **TASK-2 — Audit & differentiate task types (per-type fields)** — DONE 2026-05-30 (optional `TASK_FIELD_SCHEMA`; back-compat; clone/test/deploy/review/commit/research/migrate)
   - **VERIFIED:** All ~30 entries in `TASK_TYPES` share one shape (`target` + `details`); only the
     directive sub-types (plan/log/split/validate/synthesize/commit/produce_file/rules/goto) special-case
     their output. Many tasks would benefit from type-specific fields/placeholders.
@@ -817,8 +817,8 @@ step-number collision) and BUG-F6 (`${itemVar}` UNDEFINED inside loop body).
 |----------|------|---|--------|--------|
 | 🟠 P1 | BUG-MM — Disable multi-mode doesn't collapse panel | 10.1 | Small | ✅ |
 | 🟡 P2 | TASK-3 — Plan task "plan & execute" mode | 10.3 | Small-Med | ✅ |
-| 🟡 P2 | TASK-1 — `none` target-type option | 10.2 | Small | ⬜ |
-| 🟡 P2 | TASK-2 — Per-type task fields audit | 10.2 | Med-Large | ⬜ |
+| 🟡 P2 | TASK-1 — `none` target-type option | 10.2 | Small | ✅ |
+| 🟡 P2 | TASK-2 — Per-type task fields audit | 10.2 | Med-Large | ✅ |
 | 🟡 P2 | NEST-1 — Nest sub-nodes inside tasks | 10.4 | Medium | ⬜ |
 | 🟢 P3 | ARCH-1 — Split script.js into modules | 10.5 | Large | ⬜ |
 

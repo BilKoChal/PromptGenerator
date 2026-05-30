@@ -672,3 +672,25 @@ body.settings-open .settings-modal {
     .set-row { grid-template-columns: 1fr auto; }
     .set-row > label { grid-column: 1 / -1; padding-top: 0; }
 }
+
+/* [TASK-2] Per-type extra task fields */
+.task-extra-fields {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px; margin-top: 8px;
+}
+.task-extra-field { display: flex; flex-direction: column; gap: 3px; }
+.task-extra-field > label { font-size: 0.72rem; color: var(--text-secondary); font-weight: 500; }
+.task-extra-input, .task-extra-select {
+    padding: 6px 8px; font-size: 0.82rem; font-family: var(--font-sans);
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); box-sizing: border-box;
+}
+.task-extra-input:focus, .task-extra-select:focus { outline: none; border-color: var(--primary); }
+
+/* [TASK-3] Plan-mode selector */
+.plan-mode-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.plan-mode-label { font-size: 0.72rem; color: var(--text-secondary); font-weight: 500; }
+.plan-mode-select {
+    padding: 6px 8px; font-size: 0.82rem; font-family: var(--font-sans);
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text);
+}
