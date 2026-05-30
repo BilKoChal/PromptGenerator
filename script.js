@@ -622,11 +622,11 @@
     // Resolve the full verb for a task node (e.g. "CREATE FILE", "CREATE FOLDER")
     function getVerb(node) {
         const t = TASK_TYPE_MAP[node.action];
-        if (!t) return node.action;
+        const verb = getSetting('verbs.' + node.action) || (t ? t.verb : node.action);
         if (HAS_TARGET_TYPE[node.action]) {
-            return t.verb + ' ' + (node.targetType || 'file').toUpperCase();
+            return verb + ' ' + (node.targetType || 'file').toUpperCase();
         }
-        return t.verb;
+        return verb;
     }
 
     // ──────────────────────────────────────
@@ -883,7 +883,7 @@
             if (isExplicit()) {
                 let s = ind + num + '. TABLE — ' + caption + ':\n';
                 rows.forEach((row, ri) => {
-                    s += ind + '   Row ' + (ri + 1) + ': ' + row.map((cell, ci) => (n.headers[ci] || 'Col ' + (ci + 1)) + '=' + (interp(cell) || '(empty)')).join(', ') + '\n';
+                    s += ind + '   ' + getSetting('table.rowWord') + ' ' + (ri + 1) + ': ' + row.map((cell, ci) => (n.headers[ci] || 'Col ' + (ci + 1)) + '=' + (interp(cell) || '(empty)')).join(', ') + '\n';
                 });
                 return s;
             }
@@ -905,23 +905,20 @@
         if (n.type === 'ask') {
             const questions = n.questions || [];
             if (isExplicit()) {
-                let s = ind + num + '. ASK THE USER the following question' + (questions.length > 1 ? 's' : '') +
-                    ' in a ' + (n.oneMessage ? 'SINGLE' : 'separate') + ' message and WAIT for their answer:\n';
+                let s = ind + num + '. ' + getSetting(n.oneMessage ? 'ask.explicitSingle' : 'ask.explicitSeparate') + '\n';
                 questions.forEach((q, qi) => {
                     s += ind + '   Q' + (qi + 1) + ': ' + (q.text ? interp(q.text) : '<question?>') + '\n';
                     if (q.kind === 'choice' && (q.options || []).length) {
-                        s += ind + '      Options: ' + q.options.map(o => '"' + interp(o) + '"').join(', ');
-                        if (q.allowOther) s += ' (or Other)';
+                        s += ind + '      ' + getSetting('ask.optionsLabel') + ': ' + q.options.map(o => '"' + interp(o) + '"').join(', ');
+                        if (q.allowOther) s += ' (' + getSetting('ask.orOther') + ')';
                         s += '\n';
                     } else {
-                        s += ind + '      (free text answer)\n';
+                        s += ind + '      (' + getSetting('ask.freeText') + ')\n';
                     }
-                    if (q.saveTo && q.saveTo.trim()) s += ind + '      Save answer to: $' + q.saveTo.trim() + '\n';
-                    if (q.suggestDefault) s += ind + '      Suggest best-practice default.\n';
+                    if (q.saveTo && q.saveTo.trim()) s += ind + '      ' + getSetting('ask.saveToLabel') + ': $' + q.saveTo.trim() + '\n';
+                    if (q.suggestDefault) s += ind + '      ' + getSetting('ask.suggestDefaultLabel') + '\n';
                 });
-                // Branches
                 if ((n.branches || []).length) {
-                    // Find the choice question that drives branching
                     const choiceQ = questions.find(q => q.kind === 'choice' && (q.options || []).length);
                     if (choiceQ) {
                         (n.branches || []).forEach((b, bi) => {
@@ -933,9 +930,9 @@
                 }
                 return s;
             }
-            // Compact
-            const qSummary = questions.map(q => q.text ? interp(q.text).slice(0, 30) : '?').join('; ');
-            let s = ind + num + '. ASK USER: ' + qSummary + '\n';
+            // Compact — [F3] include a "(suggest default)" marker per question
+            const qSummary = questions.map(q => (q.text ? interp(q.text).slice(0, 30) : '?') + (q.suggestDefault ? ' (suggest default)' : '')).join('; ');
+            let s = ind + num + '. ' + getSetting('ask.compactLabel') + ': ' + qSummary + '\n';
             if ((n.branches || []).length) {
                 const choiceQ = questions.find(q => q.kind === 'choice' && (q.options || []).length);
                 if (choiceQ) {
@@ -952,7 +949,7 @@
             const name = n.archiveName ? interp(n.archiveName) : '<archive name?>';
             const tree = n.tree ? n.tree.trim() : '';
             if (isExplicit()) {
-                let s = ind + num + '. PACKAGE — Collect the files listed below and bundle them into a single archive named "' + name + '", reproducing EXACTLY this folder structure:\n';
+                let s = ind + num + '. ' + fill(getSetting('package.explicitLead'), { name: name }) + '\n';
                 if (tree) {
                     s += ind + '```\n';
                     tree.split('\n').forEach(l => { s += ind + '   ' + l + '\n'; });
@@ -960,7 +957,7 @@
                 } else {
                     s += ind + '   <no tree structure defined>\n';
                 }
-                if (n.filesNote && n.filesNote.trim()) s += ind + '   Note: ' + interp(n.filesNote).trim() + '\n';
+                if (n.filesNote && n.filesNote.trim()) s += ind + '   ' + getSetting('package.noteLabel') + ': ' + interp(n.filesNote).trim() + '\n';
                 return s;
             }
             // Compact
@@ -968,34 +965,35 @@
             return s;
         }
         if (n.type === 'if') {
-            let s = ind + num + '. IF ' + (n.condition ? interp(n.condition) : '<condition?>') + ':\n';
+            let s = ind + num + '. ' + getSetting('cond.if') + ' ' + (n.condition ? interp(n.condition) : '<condition?>') + ':\n';
             s += slotPseudo(n.then, depth + 1, num);
             (n.elseifs || []).forEach(e => {
-                s += ind + '   ELSE IF ' + (e.condition ? interp(e.condition) : '<condition?>') + ':\n';
+                s += ind + '   ' + getSetting('cond.elseIf') + ' ' + (e.condition ? interp(e.condition) : '<condition?>') + ':\n';
                 s += slotPseudo(e.children, depth + 1, num);
             });
-            if ((n.else || []).length) { s += ind + '   ELSE:\n'; s += slotPseudo(n.else, depth + 1, num); }
+            if ((n.else || []).length) { s += ind + '   ' + getSetting('cond.else') + ':\n'; s += slotPseudo(n.else, depth + 1, num); }
             return s;
         }
         if (n.type === 'loop') {
             let head;
-            if (n.loopType === 'while') head = 'WHILE ' + (n.source ? interp(n.source) : '<condition?>');
-            else if (n.loopType === 'repeat') head = 'REPEAT ' + (n.source ? interp(n.source) : '<n?>') + ' TIMES';
-            else head = 'FOR EACH ' + (n.itemVar || 'item') + ' IN ' + (n.source ? interp(n.source) : '<collection?>');
+            if (n.loopType === 'while') head = getSetting('loop.while') + ' ' + (n.source ? interp(n.source) : '<condition?>');
+            else if (n.loopType === 'repeat') head = getSetting('loop.repeat') + ' ' + (n.source ? interp(n.source) : '<n?>') + ' ' + getSetting('loop.times');
+            else head = getSetting('loop.forEach') + ' ' + (n.itemVar || 'item') + ' ' + getSetting('loop.in') + ' ' + (n.source ? interp(n.source) : '<collection?>');
             const maxIter = n.maxIterations && n.maxIterations.trim();
             const exitCond = n.exitCondition && n.exitCondition.trim();
             if (isExplicit()) {
                 let s = ind + num + '. ' + head;
-                if (maxIter) s += '  (at most ' + interp(maxIter) + ' cycles)';
+                if (maxIter) s += '  (' + fill(getSetting('loop.atMostTpl'), { n: interp(maxIter) }) + ')';
                 s += ':\n';
-                if (exitCond) s += ind + '   After each iteration, check: "' + interp(exitCond) + '". If the condition is met, exit the loop early and continue to the next step.\n';
+                if (exitCond) s += ind + '   ' + fill(getSetting('loop.checkTpl'), { cond: interp(exitCond) }) + '\n';
                 s += slotPseudo(n.body, depth + 1, num);
                 return s;
             }
             let s = ind + num + '. ' + head;
-            if (maxIter && exitCond) s += ' (until ' + interp(exitCond) + ', max ' + interp(maxIter) + ')';
-            else if (maxIter) s += ' (max ' + interp(maxIter) + ')';
-            else if (exitCond) s += ' (until ' + interp(exitCond) + ')';
+            const ul = getSetting('loop.untilLabel'), ml = getSetting('loop.maxLabel');
+            if (maxIter && exitCond) s += ' (' + ul + ' ' + interp(exitCond) + ', ' + ml + ' ' + interp(maxIter) + ')';
+            else if (maxIter) s += ' (' + ml + ' ' + interp(maxIter) + ')';
+            else if (exitCond) s += ' (' + ul + ' ' + interp(exitCond) + ')';
             s += ':\n';
             s += slotPseudo(n.body, depth + 1, num);
             return s;
@@ -1004,31 +1002,30 @@
             const mode = (n.execMode || 'parallel');
             let s;
             if (isExplicit()) {
-                s = ind + num + (mode === 'parallel'
-                    ? '. SPAWN the following sub-agents AT THE SAME TIME (in parallel). Each works independently and returns its own report:\n'
-                    : '. RUN the following sub-agents ONE AT A TIME, in order; each finishes before the next starts:\n');
+                s = ind + num + '. ' + (mode === 'parallel' ? getSetting('subagent.explicitParallel') : getSetting('subagent.explicitSequential')) + '\n';
             } else {
-                s = ind + num + '. SPAWN sub-agents [' + mode.toUpperCase() + ']:\n';
+                s = ind + num + '. ' + getSetting('subagent.compactSpawn') + ' [' + mode.toUpperCase() + ']:\n';
             }
             (n.agents || []).forEach((a, ai) => {
-                let agentLine = ind + '   - Agent "' + (a.role ? interp(a.role) : 'unnamed') + '"';
-                if (a.domain && a.domain.trim()) agentLine += ' (domain: ' + interp(a.domain).trim() + ')';
+                let agentLine = ind + '   - ' + getSetting('subagent.agentWord') + ' "' + (a.role ? interp(a.role) : 'unnamed') + '"';
+                if (a.domain && a.domain.trim()) agentLine += ' (' + getSetting('subagent.domainLabel') + ': ' + interp(a.domain).trim() + ')';
                 agentLine += (a.task ? ' → ' + interp(a.task) : '');
-                if (a.agentic) agentLine += ' (agentic)';
-                if (a.isPrimary) agentLine += ' [PRIMARY]';
+                if (a.agentic) agentLine += ' (' + getSetting('subagent.agenticTag') + ')';
+                if (a.verbose) agentLine += ' (' + getSetting('subagent.verboseTag') + ')';
+                if (a.isPrimary) agentLine += ' [' + getSetting('subagent.primaryTag') + ']';
                 s += agentLine + '\n';
                 if (isExplicit()) {
-                    if (a.rationale && a.rationale.trim()) s += ind + '     Rationale: ' + interp(a.rationale).trim() + '\n';
-                    if (a.outputFile && a.outputFile.trim()) s += ind + '     Write report to: ' + interp(a.outputFile).trim() + '\n';
+                    if (a.rationale && a.rationale.trim()) s += ind + '     ' + getSetting('subagent.rationaleLabel') + ': ' + interp(a.rationale).trim() + '\n';
+                    if (a.outputFile && a.outputFile.trim()) s += ind + '     ' + getSetting('subagent.reportLabel') + ': ' + interp(a.outputFile).trim() + '\n';
                 }
                 if (a.children && a.children.length) s += slotPseudo(a.children, depth + 2, num + '.' + (ai + 1));
             });
             return s;
         }
         if (n.type === 'parallel') {
-            let s = ind + num + '. PARALLEL:\n';
+            let s = ind + num + '. ' + getSetting('parallel.label') + ':\n';
             (n.branches || []).forEach((b, bi) => {
-                s += ind + '   ── branch ' + (bi + 1) + ':\n';
+                s += ind + '   ── ' + getSetting('parallel.branchWord') + ' ' + (bi + 1) + ':\n';
                 s += slotPseudo(b, depth + 2, num + '.' + (bi + 1));
             });
             return s;
@@ -1036,40 +1033,38 @@
         if (n.type === 'route') {
             const on = n.on ? interp(n.on) : '<dispatch field?>';
             if (isExplicit()) {
-                let s = ind + num + '. DECIDE based on ' + on + ':\n';
+                let s = ind + num + '. ' + getSetting('route.explicitLead') + ' ' + on + ':\n';
                 (n.cases || []).forEach((c, ci) => {
                     const label = c.label ? interp(c.label) : 'case ' + (ci + 1);
                     const match = c.match ? interp(c.match) : '';
-                    s += ind + '   If the request matches "' + label + '"' + (match ? ' ("' + match + '")' : '') + ':\n';
+                    s += ind + '   ' + fill(getSetting('route.explicitMatchTpl'), { label: label, match: (match ? ' ("' + match + '")' : '') }) + '\n';
                     s += slotPseudo(c.children, depth + 2, num + '.' + (ci + 1));
                 });
                 if ((n.defaultCase || []).length) {
-                    s += ind + '   Otherwise:\n';
+                    s += ind + '   ' + getSetting('route.explicitOtherwise') + '\n';
                     s += slotPseudo(n.defaultCase, depth + 2, num + '.' + ((n.cases || []).length + 1));
                 }
                 return s;
             }
-            let s = ind + num + '. ROUTE on ' + on + ':\n';
+            let s = ind + num + '. ' + getSetting('route.compactLabel') + ' ' + on + ':\n';
             (n.cases || []).forEach((c, ci) => {
                 const label = c.label ? interp(c.label) : 'case ' + (ci + 1);
-                s += ind + '   case "' + label + '" →\n';
+                s += ind + '   ' + getSetting('route.caseWord') + ' "' + label + '" →\n';
                 s += slotPseudo(c.children, depth + 2, num + '.' + (ci + 1));
             });
             if ((n.defaultCase || []).length) {
-                s += ind + '   default →\n';
+                s += ind + '   ' + getSetting('route.defaultWord') + ' →\n';
                 s += slotPseudo(n.defaultCase, depth + 2, num + '.' + ((n.cases || []).length + 1));
             }
             return s;
         }
         if (n.type === 'section') {
             const title = n.title ? interp(n.title) : 'Untitled phase';
-            let s = ind + '=== PHASE ' + num + ': ' + title + ' ===\n';
-            if (n.goalNote && n.goalNote.trim()) s += ind + '   Goal: ' + interp(n.goalNote).trim() + '\n';
+            let s = ind + '=== ' + getSetting('section.label') + ' ' + num + ': ' + title + ' ===\n';
+            if (n.goalNote && n.goalNote.trim()) s += ind + '   ' + getSetting('section.goalLabel') + ': ' + interp(n.goalNote).trim() + '\n';
             s += slotPseudo(n.children, depth + 1, num);
             if (n.exitCriteria && n.exitCriteria.trim()) {
-                s += ind + (isExplicit()
-                    ? '   Do not leave this phase until: ' + interp(n.exitCriteria).trim() + '\n'
-                    : '   Exit when: ' + interp(n.exitCriteria).trim() + '\n');
+                s += ind + '   ' + getSetting(isExplicit() ? 'section.exitExplicit' : 'section.exitCompact') + ': ' + interp(n.exitCriteria).trim() + '\n';
             }
             return s;
         }
@@ -1226,15 +1221,20 @@
         }
         if (n.type === 'ask') {
             const questions = n.questions || [];
-            let s = ind + '- **' + num + '. ASK USER**' + (n.oneMessage ? ' (all in one message)' : '') + ':\n';
+            const exp = isExplicit();
+            let s = ind + '- **' + num + '. ' + getSetting('ask.compactLabel') + '**' + (n.oneMessage ? ' (all in one message)' : '') + ':\n';
+            if (exp) s += ind + '  - _' + getSetting(n.oneMessage ? 'ask.explicitSingle' : 'ask.explicitSeparate') + '_\n';
             questions.forEach((q, qi) => {
                 s += ind + '  - Q' + (qi + 1) + ': ' + (q.text ? interp(q.text) : '_(not specified)_') + '\n';
                 if (q.kind === 'choice' && (q.options || []).length) {
-                    s += ind + '    Options: ' + q.options.map(o => '`' + interp(o) + '`').join(', ');
-                    if (q.allowOther) s += ' (or Other)';
+                    s += ind + '    ' + getSetting('ask.optionsLabel') + ': ' + q.options.map(o => '`' + interp(o) + '`').join(', ');
+                    if (q.allowOther) s += ' (' + getSetting('ask.orOther') + ')';
                     s += '\n';
+                } else if (exp) {
+                    s += ind + '    _(' + getSetting('ask.freeText') + ')_\n';
                 }
-                if (q.saveTo && q.saveTo.trim()) s += ind + '    → Save to: `$' + q.saveTo.trim() + '`\n';
+                if (q.saveTo && q.saveTo.trim()) s += ind + '    → ' + getSetting('ask.saveToLabel') + ': `$' + q.saveTo.trim() + '`\n';
+                if (q.suggestDefault) s += ind + '    _' + getSetting('ask.suggestDefaultLabel') + '_\n';
             });
             if ((n.branches || []).length) {
                 const choiceQ = questions.find(q => q.kind === 'choice' && (q.options || []).length);
@@ -1251,70 +1251,83 @@
         if (n.type === 'package') {
             const name = n.archiveName ? interp(n.archiveName) : '_(not specified)_';
             let s = ind + '- **' + num + '. PACKAGE:** `' + name + '`\n';
+            if (isExplicit()) s += ind + '  - _' + fill(getSetting('package.explicitLead'), { name: interp(n.archiveName || '') }) + '_\n';
             if (n.tree && n.tree.trim()) {
                 s += ind + '  ```\n';
                 n.tree.trim().split('\n').forEach(l => { s += ind + '  ' + l + '\n'; });
                 s += ind + '  ```\n';
             }
-            if (n.filesNote && n.filesNote.trim()) s += ind + '  - _Note:_ ' + interp(n.filesNote).trim() + '\n';
+            if (n.filesNote && n.filesNote.trim()) s += ind + '  - _' + getSetting('package.noteLabel') + ':_ ' + interp(n.filesNote).trim() + '\n';
             return s;
         }
         if (n.type === 'section') {
             const hashes = '#'.repeat(Math.min(6, depth + 2));
-            let s = '\n' + hashes + ' Phase ' + num + ': ' + (n.title ? interp(n.title) : 'Untitled') + '\n';
-            if (n.goalNote && n.goalNote.trim()) s += '_Goal: ' + interp(n.goalNote).trim() + '_\n\n';
+            let s = '\n' + hashes + ' ' + cap1(getSetting('section.label')) + ' ' + num + ': ' + (n.title ? interp(n.title) : 'Untitled') + '\n';
+            if (n.goalNote && n.goalNote.trim()) s += '_' + getSetting('section.goalLabel') + ': ' + interp(n.goalNote).trim() + '_\n\n';
             s += slotMd(n.children, depth + 1, num);
-            if (n.exitCriteria && n.exitCriteria.trim()) s += ind + '> **Exit when:** ' + interp(n.exitCriteria).trim() + '\n';
+            if (n.exitCriteria && n.exitCriteria.trim()) s += ind + '> **' + getSetting(isExplicit() ? 'section.exitExplicit' : 'section.exitCompact') + ':** ' + interp(n.exitCriteria).trim() + '\n';
             return s;
         }
         if (n.type === 'if') {
-            let s = ind + '- **' + num + '. IF** `' + (n.condition ? interp(n.condition) : '?') + '` **THEN:**\n';
+            let s = ind + '- **' + num + '. ' + getSetting('cond.if') + '** `' + (n.condition ? interp(n.condition) : '?') + '` **' + getSetting('cond.then') + ':**\n';
             s += slotMd(n.then, depth + 1, num);
-            (n.elseifs || []).forEach(e => { s += ind + '  **ELSE IF** `' + (e.condition ? interp(e.condition) : '?') + '`:\n'; s += slotMd(e.children, depth + 1, num); });
-            if ((n.else || []).length) { s += ind + '  **ELSE:**\n'; s += slotMd(n.else, depth + 1, num); }
+            (n.elseifs || []).forEach(e => { s += ind + '  **' + getSetting('cond.elseIf') + '** `' + (e.condition ? interp(e.condition) : '?') + '`:\n'; s += slotMd(e.children, depth + 1, num); });
+            if ((n.else || []).length) { s += ind + '  **' + getSetting('cond.else') + ':**\n'; s += slotMd(n.else, depth + 1, num); }
             return s;
         }
         if (n.type === 'loop') {
-            let head = n.loopType === 'while' ? 'WHILE `' + (n.source ? interp(n.source) : '?') + '`'
-                : n.loopType === 'repeat' ? 'REPEAT `' + (n.source ? interp(n.source) : '?') + '` TIMES'
-                : 'FOR EACH `' + (n.itemVar || 'item') + '` IN `' + (n.source ? interp(n.source) : '?') + '`';
+            const exp = isExplicit();
+            let head = n.loopType === 'while' ? getSetting('loop.while') + ' `' + (n.source ? interp(n.source) : '?') + '`'
+                : n.loopType === 'repeat' ? getSetting('loop.repeat') + ' `' + (n.source ? interp(n.source) : '?') + '` ' + getSetting('loop.times')
+                : getSetting('loop.forEach') + ' `' + (n.itemVar || 'item') + '` ' + getSetting('loop.in') + ' `' + (n.source ? interp(n.source) : '?') + '`';
             const maxIter = n.maxIterations && n.maxIterations.trim();
             const exitCond = n.exitCondition && n.exitCondition.trim();
-            if (maxIter && exitCond) head += ' (until ' + interp(exitCond) + ', max ' + interp(maxIter) + ')';
-            else if (maxIter) head += ' (max ' + interp(maxIter) + ')';
-            else if (exitCond) head += ' (until ' + interp(exitCond) + ')';
-            return ind + '- **' + num + '. ' + head + ':**\n' + slotMd(n.body, depth + 1, num);
+            const ul = getSetting('loop.untilLabel'), ml = getSetting('loop.maxLabel');
+            if (maxIter && exitCond) head += ' (' + ul + ' ' + interp(exitCond) + ', ' + ml + ' ' + interp(maxIter) + ')';
+            else if (maxIter) head += ' (' + ml + ' ' + interp(maxIter) + ')';
+            else if (exitCond) head += ' (' + ul + ' ' + interp(exitCond) + ')';
+            let s = ind + '- **' + num + '. ' + head + ':**\n';
+            if (exp && exitCond) s += ind + '  - _' + fill(getSetting('loop.checkTpl'), { cond: interp(exitCond) }) + '_\n';
+            s += slotMd(n.body, depth + 1, num);
+            return s;
         }
         if (n.type === 'subagent') {
-            let s = ind + '- **' + num + '. SPAWN sub-agents** [' + (n.execMode || 'parallel') + ']:\n';
+            const mode = (n.execMode || 'parallel');
+            const exp = isExplicit();
+            let s = ind + '- **' + num + '. ' + getSetting('subagent.compactSpawn') + '** [' + mode + ']:\n';
+            if (exp) s += ind + '  - _' + getSetting(mode === 'parallel' ? 'subagent.explicitParallel' : 'subagent.explicitSequential') + '_\n';
             (n.agents || []).forEach((a, ai) => {
                 let agentLine = ind + '  - **' + (a.role ? interp(a.role) : 'agent') + '**';
                 if (a.domain && a.domain.trim()) agentLine += ' _(' + interp(a.domain).trim() + ')_';
                 agentLine += (a.task ? ' — ' + interp(a.task) : '');
+                if (a.agentic) agentLine += ' _' + getSetting('subagent.agenticTag') + '_';
+                if (a.verbose) agentLine += ' _' + getSetting('subagent.verboseTag') + '_';
                 if (a.isPrimary) agentLine += ' ⭐';
                 s += agentLine + '\n';
-                if (a.rationale && a.rationale.trim()) s += ind + '    - Rationale: ' + interp(a.rationale).trim() + '\n';
-                if (a.outputFile && a.outputFile.trim()) s += ind + '    - Report: `' + interp(a.outputFile).trim() + '`\n';
+                if (a.rationale && a.rationale.trim()) s += ind + '    - ' + getSetting('subagent.rationaleLabel') + ': ' + interp(a.rationale).trim() + '\n';
+                if (a.outputFile && a.outputFile.trim()) s += ind + '    - ' + getSetting('subagent.reportLabel') + ': `' + interp(a.outputFile).trim() + '`\n';
                 if (a.children && a.children.length) s += slotMd(a.children, depth + 2, num + '.' + (ai + 1));
             });
             return s;
         }
         if (n.type === 'parallel') {
-            let s = ind + '- **' + num + '. PARALLEL:**\n';
-            (n.branches || []).forEach((b, bi) => { s += ind + '  - _branch ' + (bi + 1) + ':_\n'; s += slotMd(b, depth + 2, num + '.' + (bi + 1)); });
+            let s = ind + '- **' + num + '. ' + getSetting('parallel.label') + ':**\n';
+            (n.branches || []).forEach((b, bi) => { s += ind + '  - _' + getSetting('parallel.branchWord') + ' ' + (bi + 1) + ':_\n'; s += slotMd(b, depth + 2, num + '.' + (bi + 1)); });
             return s;
         }
         if (n.type === 'route') {
             const on = n.on ? interp(n.on) : '?';
-            let s = ind + '- **' + num + '. ROUTE** on `' + on + '`:\n';
+            const exp = isExplicit();
+            let s = ind + '- **' + num + '. ' + (exp ? getSetting('route.explicitLead') : getSetting('route.compactLabel')) + '** `' + on + '`:\n';
             (n.cases || []).forEach((c, ci) => {
                 const label = c.label ? interp(c.label) : 'case ' + (ci + 1);
                 const match = c.match ? interp(c.match) : '';
-                s += ind + '  - _case "' + label + '"' + (match ? ' (`' + match + '`)' : '') + ':_\n';
+                if (exp) s += ind + '  - _' + fill(getSetting('route.explicitMatchTpl'), { label: label, match: (match ? ' (`' + match + '`)' : '') }) + '_\n';
+                else s += ind + '  - _' + getSetting('route.caseWord') + ' "' + label + '"' + (match ? ' (`' + match + '`)' : '') + ':_\n';
                 s += slotMd(c.children, depth + 2, num + '.' + (ci + 1));
             });
             if ((n.defaultCase || []).length) {
-                s += ind + '  - _otherwise:_\n';
+                s += ind + '  - _' + (exp ? getSetting('route.explicitOtherwise') : getSetting('route.defaultWord') + ':') + '_\n';
                 s += slotMd(n.defaultCase, depth + 2, num + '.' + ((n.cases || []).length + 1));
             }
             return s;

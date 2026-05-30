@@ -50,29 +50,34 @@ structural nodes (only the leaf sub-type tasks vary) — the ⬜ is correct.
 
 ---
 
-## 🛠️ Progress — 2026-05-30 (settings foundation + header/gate slice)
+## 🛠️ Progress — 2026-05-30 (settings foundation + full generator sweep)
 
-> Implemented and verified end-to-end (jsdom: overriding a setting changes the output).
+> Implemented and verified end-to-end (jsdom: overriding any setting changes the output;
+> 14/14 cross-node override assertions pass).
 
 - **S1 — Settings data model:** ✅ done. `DEFAULT_SETTINGS` (single source of truth for every
   component's output text), `getSetting(path)` (override → default, partial-path safe),
   `fill(tpl, vars)` for templates. Verbs derived from `TASK_TYPES` so they never desync.
 - **S6 — Persistence:** ✅ load/save done. Separate `prompt_generator_settings` key;
   `loadSettings()` called at boot after `loadState()`; `saveSettings()` debounced.
-- **S3 — Connect settings to generators:** 🔶 partial. Done: the whole **header**
-  (ROLE, VARS, CONTEXT, MEMORY, RESOURCES label, MODE/STEPS labels) and the **GATE** node, in
-  **both** pseudo and Markdown. Remaining: task verbs (`getVerb`), and the remaining nodes
-  (loop, if, route, section, subagent, parallel, ask, table, package).
-- **S4 — Role presets:** 🔶 resolution path done — `getEffectiveRole()` now reads
-  `getSetting('role.presets.<key>')`, so customizing a preset already changes output. The
-  editing UI for presets is part of S2 (modal), still ⬜.
-- **V1 ROLE / V2 CONTEXT / V3 VARS / V5 MODE:** ✅ Compact vs Explicit now genuinely differ
-  (compact = terse one-liners; explicit = labelled blocks / full sentences).
-- **V4 RESOURCES:** 🔶 label + explicit lead-in wired; richer explicit body still optional.
-- **V6 (Markdown node explicit):** 🔶 GATE done in Markdown; other containers still pending.
+- **S3 — Connect settings to generators:** ✅ done. Header (ROLE/VARS/CONTEXT/MEMORY/RESOURCES/
+  MODE/STEPS), task verbs (`getVerb`), and **every** node (gate, loop, if, route, section,
+  subagent, parallel, ask, table, package) now read from `getSetting`, in **both** pseudo and
+  Markdown. (Leaf task sub-type explicit expansions — goto/break/plan/etc. — still use literals;
+  optional follow-up.)
+- **S4 — Role presets:** 🔶 resolution path done — `getEffectiveRole()` reads
+  `getSetting('role.presets.<key>')`. Editing UI is part of S2 (modal), still ⬜.
+- **V1–V5:** ✅ Compact vs Explicit now genuinely differ across the whole header and all nodes.
+- **V6 (Markdown node explicit):** ✅ explicit prose added for gate/loop/route/subagent/ask/
+  section/package in Markdown.
+- **BUG-F1 / F2 / F3:** ✅ fixed — sub-agent `agentic` now in Markdown; sub-agent `verbose` now
+  emitted in both generators (output side; UI checkbox still TODO under F2); ASK `suggestDefault`
+  now in Markdown and pseudo-compact.
+- **Still open:** S2 (settings modal UI), S5 (import/export), F2 UI checkbox, and BUG-F5/F6
+  (IF-branch numbering, loop `${itemVar}` UNDEFINED).
 
-**Next:** S3 sweep over the remaining nodes (start with `getVerb`/task verbs), then S2 (the
-settings modal UI), then S5 (import/export).
+**Next:** S2 — the settings modal UI (gear button → editable fields grouped by component),
+then S5 (import/export/reset), then BUG-F5/F6 + the F2 UI checkbox.
 
 ---
 
@@ -1129,15 +1134,15 @@ settings modal UI), then S5 (import/export).
 |----------|------|---------|--------|--------|
 | 🔴 P0 | BUG-M1 — Multi-mode disable button | 9.1 | Small | ✅ |
 | 🔴 P0 | BUG-M2 — Focus loss in mode Summary | 9.2 | Small | ✅ |
-| 🟠 P1 | BUG-F1 — Sub-agent agentic: pseudo ✅, MD missing | 9.3 | Small | 🔶 |
-| 🟠 P1 | BUG-F2 — Sub-agent verbose: dead field (no UI, no output) | 9.3 | Small | ❌ |
-| 🟠 P1 | BUG-F3 — ASK suggestDefault: pseudo-explicit ✅, rest missing | 9.3 | Small | 🔶 |
+| 🟠 P1 | BUG-F1 — Sub-agent agentic now in pseudo + MD | 9.3 | Small | ✅ |
+| 🟠 P1 | BUG-F2 — Sub-agent verbose now in output (UI checkbox TODO) | 9.3 | Small | 🔶 |
+| 🟠 P1 | BUG-F3 — ASK suggestDefault now in all modes | 9.3 | Small | ✅ |
 | 🟠 P1 | BUG-F4 — Full audit of all fields (table corrected) | 9.3 | Small | 🔶 |
 | 🟠 P1 | BUG-F5 — IF/ELSE-IF/ELSE step-number collision (NEW) | 9.3 | Small | ❌ |
 | 🟠 P1 | BUG-F6 — Loop itemVar shows UNDEFINED in body (NEW) | 9.3 | Small | ❌ |
 | 🟠 P1 | S1 — Settings data model | 9.5 | Medium | ✅ |
 | 🟠 P1 | S2 — Settings modal UI | 9.5 | Large | ⬜ |
-| 🟠 P1 | S3 — Connect settings to generators | 9.5 | Large | 🔶 |
+| 🟠 P1 | S3 — Connect settings to generators | 9.5 | Large | ✅ |
 | 🟡 P2 | V1 — Compact/Explicit for Role | 9.4 | Small | ⬜ |
 | 🟡 P2 | V2 — Compact/Explicit for Context | 9.4 | Small | ⬜ |
 | 🟡 P2 | V6 — Compact/Explicit for all node types in MD | 9.4 | Medium | ⬜ |
